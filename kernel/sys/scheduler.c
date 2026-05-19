@@ -38,6 +38,10 @@ extern void thread_entry_trampoline(void);
 static _Atomic int32_t next_tid = 1;
 static _Atomic int32_t next_pid = 1;
 
+pid_t scheduler_alloc_pid(void) {
+    return (pid_t)__atomic_fetch_add(&next_pid, 1, __ATOMIC_RELAXED);
+}
+
 /* Global kernel process */
 process_t kernel_process;
 
@@ -48,6 +52,7 @@ process_t kernel_process;
 static list_head_t  dead_list;
 static spinlock_t   dead_list_lock;
 static wait_queue_t reaper_wq;
+static thread_t    *reaper_thread;
 
 static void idle_fn(void) {
     for (;;) {
@@ -82,12 +87,14 @@ static void reaper_fn(void) {
 /* ------------------------------------------------------------------ */
 
 void scheduler_init(void) {
-    kernel_process.pid          = __atomic_fetch_add(&next_pid, 1, __ATOMIC_RELAXED);
+    kernel_process.pid          = scheduler_alloc_pid();
     kernel_process.name         = "kernel";
     kernel_process.pagemap      = NULL;
     kernel_process.lock         = (spinlock_t)SPINLOCK_ZERO;
     list_head_init(&kernel_process.threads);
     kernel_process.thread_count = 0;
+    list_head_init(&kernel_process.vma_list);
+    kernel_process.mmap_base    = 0;
 
     list_head_init(&dead_list);
     dead_list_lock = (spinlock_t)SPINLOCK_ZERO;
@@ -103,13 +110,18 @@ void scheduler_init(void) {
         /* idle is never enqueued; schedule() switches to it explicitly */
     }
 
-    /* Reaper: create and enqueue on core 0.  It blocks immediately on first
-     * run (dead_list is empty), then wakes each time thread_exit() is called. */
-    thread_t *reaper = thread_create(&kernel_process, reaper_fn);
-    KERNEL_ASSERT(reaper != NULL);
-    thread_ready_on(reaper, 0);
+    /* Reaper: create but do NOT enqueue yet.  The caller must call
+     * scheduler_start_reaper() once all other threads are populated so that
+     * per-core run queues are empty immediately after scheduler_init(). */
+    reaper_thread = thread_create(&kernel_process, reaper_fn);
+    KERNEL_ASSERT(reaper_thread != NULL);
 
     KINFO("sched", "Initialized (%lu cores)", coreCount);
+}
+
+void scheduler_start_reaper(void) {
+    KERNEL_ASSERT(reaper_thread != NULL);
+    thread_ready_on(reaper_thread, 0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -132,6 +144,7 @@ thread_t *thread_create(process_t *parent, void (*entry)(void)) {
     t->lock          = (spinlock_t)SPINLOCK_ZERO;
     t->kstack_top    = stack_top;
     t->kstack_bottom = stack_top - KSTACK_SIZE;
+    t->ustack_top    = 0;           /* kernel thread; set by caller for user threads */
     list_node_init(&t->list_node);
     list_node_init(&t->wq_node);
 
@@ -194,6 +207,7 @@ void __attribute__((noreturn)) scheduler_enter(void) {
         KERNEL_ASSERT(idle != NULL);
         idle->state         = THREAD_RUNNING;
         cpu->current_thread = idle;
+        cpu->tss.rsp0       = idle->kstack_top;
         spinlock_release(&cpu->run_queue_lock, irq);
 
         context_regs_t dummy;
@@ -204,6 +218,7 @@ void __attribute__((noreturn)) scheduler_enter(void) {
     thread_t *first     = list_entry(node, thread_t, list_node);
     first->state        = THREAD_RUNNING;
     cpu->current_thread = first;
+    cpu->tss.rsp0       = first->kstack_top;
 
     spinlock_release(&cpu->run_queue_lock, irq);
 
@@ -254,6 +269,7 @@ void schedule(void) {
 
     next->state         = THREAD_RUNNING;
     cpu->current_thread = next;
+    cpu->tss.rsp0       = next->kstack_top;   /* ring-3 → ring-0 stack */
 
     spinlock_release(&cpu->run_queue_lock, irq);
 

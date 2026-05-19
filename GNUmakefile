@@ -23,6 +23,7 @@ TEST_EMU_ARGS += -device isa-debug-exit,iobase=0xf4,iosize=0x04
 TEST_EXTRA_CFLAGS = -DKTEST_ENABLED
 
 _test-iso:
+	$(MAKE) -C kernel clean
 	$(MAKE) -C kernel EXTRA_CFLAGS="$(TEST_EXTRA_CFLAGS) $(KTEST_CFLAGS)"
 	rm -rf iso_root
 	mkdir -p iso_root

@@ -34,17 +34,13 @@ core_t *cpu_core_local = NULL;
 
 extern struct regs* lapic_irq_handler(struct regs* r);
 extern void lapic_init(void);
-extern void gdt_reload();
 
 /* Spinlock to prevent cores from initializing simultaneously */
 spinlock_t lock = SPINLOCK_ZERO;
 
 /* Start's a single core, this function will run in the core being initialized */
 void core_start(struct limine_smp_info *core) {
-	/* Load gdt in the core */
-	gdt_reload();
-
-	/* Load idt in the core */
+	/* Load idt in the core (safe before per-core GDT: kernel CS 0x08 is same) */
 	idt_reload();
 
 	bool int_state = spinlock_acquire(&lock);
@@ -52,14 +48,12 @@ void core_start(struct limine_smp_info *core) {
 	/* Load pagemap in the core */
 	mmu_switch_pagemap(mmu_kernel_pagemap);
 
-	/* Set GS register as local core */
 	core_t *core_local = (core_t*)core->extra_argument;
-	set_gs_register(core_local);
 
 	/* Set the struct fields to their appropriate values */
-	core_local->lapic_id       = core->lapic_id;
+	core_local->lapic_id        = core->lapic_id;
 	core_local->interrupt_depth = 0;
-	core_local->current_thread = NULL;
+	core_local->current_thread  = NULL;
 
 	/* Pre-initialise scheduler fields so schedule() is safe during the
 	 * window between LAPIC calibration and scheduler_init().
@@ -67,6 +61,13 @@ void core_start(struct limine_smp_info *core) {
 	list_head_init(&core_local->run_queue);
 	core_local->run_queue_lock = (spinlock_t)SPINLOCK_ZERO;
 	core_local->idle_thread    = NULL;
+
+	/* Load the per-core GDT (embeds TSS descriptor) and arm the TSS.
+	 * Must come before set_gs_register so the GDT is live when GS is set. */
+	gdt_load_core(core_local);
+
+	/* Set GS register as local core */
+	set_gs_register(core_local);
 
 	/* Initialize LAPIC */
 	if (!cpu_has_feature(CPU_FEATURE_APIC))
@@ -143,6 +144,7 @@ void __init smp_init(void) {
 
 		/* If core is bsp then goto the function */
 		if(core->lapic_id != smp_response->bsp_lapic_id) {
+			current->bsp       = false;
 			core->goto_address = core_start; /* Jump to core start */
 		} else {
 			current->bsp = true;

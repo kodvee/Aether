@@ -150,6 +150,9 @@ void _start(void) {
 	 */
 	lapic_set_tick_hook(schedule);
 
+	/* Start the reaper now that all other queues are populated. */
+	scheduler_start_reaper();
+
 	/*
 	 * Create and enqueue the BSP's thread, then enter the scheduler.
 	 * If the LAPIC fires in the tiny window between thread_ready_on and

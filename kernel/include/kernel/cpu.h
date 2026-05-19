@@ -8,6 +8,7 @@
 #include <kernel/panic.h>
 #include <kernel/list.h>
 #include <kernel/spinlock.h>
+#include <kernel/gdt.h>
 
 extern uint64_t coreCount;
 
@@ -73,6 +74,12 @@ typedef struct core {
      * run queue is empty and no runnable thread exists.  Non-NULL after
      * scheduler_init() returns. */
     struct thread *idle_thread;
+
+    /* Per-core GDT and TSS.  Filled and loaded by gdt_load_core() during
+     * core_start().  tss.rsp0 is updated by schedule() on every context
+     * switch so that ring-3 → ring-0 transitions land on the correct stack. */
+    core_gdt_t     gdt;
+    tss_t          tss;
 } core_t;
 
 /* Array of all per-CPU state structs, indexed by cpu_id.  Allocated by

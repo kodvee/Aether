@@ -215,10 +215,37 @@ typedef struct thread {
 
     uintptr_t       kstack_top;     /* virtual address of kernel stack top */
     uintptr_t       kstack_bottom;  /* = kstack_top - KSTACK_SIZE          */
+    uintptr_t       ustack_top;     /* user stack top; 0 for kernel threads */
 
     list_node_t     list_node;      /* linkage for run queue               */
     list_node_t     wq_node;        /* linkage for wait queue              */
 } thread_t;
+
+/* ------------------------------------------------------------------ */
+/* Virtual memory area (VMA)                                            */
+/* ------------------------------------------------------------------ */
+
+/* mmap prot flags */
+#define PROT_NONE   0u
+#define PROT_READ   1u
+#define PROT_WRITE  2u
+#define PROT_EXEC   4u
+
+/* User address-space layout constants */
+#define MMAP_BASE    ((uintptr_t)0x0000000010000000ULL)  /* anonymous mmap watermark start */
+#define USTACK_TOP   ((uintptr_t)0x00007FFFFFFFE000ULL)  /* top of user stack region       */
+#define USTACK_SIZE  ((size_t)(128u * 1024u))            /* 128 KiB user stack             */
+
+/*
+ * vma_t - one contiguous mapped region in a process address space.
+ * Owned by process_t.vma_list; protected by process_t.lock.
+ */
+typedef struct {
+    uintptr_t    base;     /* page-aligned start virtual address     */
+    size_t       length;   /* page-aligned byte length               */
+    uint32_t     prot;     /* PROT_* flags                           */
+    list_node_t  node;     /* linkage in process_t.vma_list          */
+} vma_t;
 
 /* ------------------------------------------------------------------ */
 /* Process structure                                                    */
@@ -242,6 +269,10 @@ typedef struct process {
 
     list_head_t  threads;       /* thread_t via thread_t.list_node         */
     uint32_t     thread_count;
+
+    /* User address space */
+    list_head_t  vma_list;      /* vma_t entries; protected by lock        */
+    uintptr_t    mmap_base;     /* watermark for next anonymous mmap()     */
 } process_t;
 
 /* ------------------------------------------------------------------ */
@@ -268,6 +299,15 @@ extern process_t kernel_process;
  * Must be called from the BSP before any thread is created.
  */
 void scheduler_init(void);
+
+/*
+ * scheduler_start_reaper - enqueue the reaper thread on core 0.
+ *
+ * Must be called exactly once after scheduler_init(), after all other
+ * threads are created.  Separated from scheduler_init() so that tests
+ * can call scheduler_init() and inspect empty run queues.
+ */
+void scheduler_start_reaper(void);
 
 /*
  * thread_create - allocate and initialise a new kernel thread.
@@ -368,3 +408,65 @@ void thread_block(wait_queue_t *wq);
  * wait_queue_wake_all - wake all threads sleeping on wq.
  */
 void wait_queue_wake_all(wait_queue_t *wq);
+
+/* ------------------------------------------------------------------ */
+/* PID allocator                                                        */
+/* ------------------------------------------------------------------ */
+
+/*
+ * scheduler_alloc_pid - atomically allocate and return a fresh PID.
+ * Implemented in scheduler.c alongside next_pid.
+ */
+pid_t scheduler_alloc_pid(void);
+
+/* ------------------------------------------------------------------ */
+/* Process lifecycle API                                                */
+/* ------------------------------------------------------------------ */
+
+/*
+ * process_create - allocate a new user process with a fresh address space.
+ *
+ * Allocates process_t, assigns a PID, creates a new pagemap, and
+ * initialises all fields.  The process has no threads yet; add them
+ * with thread_create() + thread_ready_on().
+ *
+ * Returns NULL on allocation failure.
+ */
+process_t *process_create(const char *name);
+
+/*
+ * process_destroy - tear down a process and free its resources.
+ *
+ * Unmaps all VMAs, frees the process_t.  The process must have no
+ * live threads (thread_count == 0) before this is called.
+ */
+void process_destroy(process_t *proc);
+
+/*
+ * process_mmap - map anonymous pages into a process address space.
+ *
+ * hint: preferred base address, or 0 to use the watermark allocator.
+ * length: byte length (rounded up to PAGE_SIZE).
+ * prot: PROT_* flags.
+ *
+ * Returns the virtual base address of the mapping, 0 on failure.
+ * Pages are zeroed on allocation.
+ */
+uintptr_t process_mmap(process_t *proc, uintptr_t hint, size_t length,
+                        uint32_t prot);
+
+/*
+ * process_munmap - remove a mapping previously created by process_mmap.
+ *
+ * addr and length must exactly match a single existing VMA.
+ * Does nothing if no matching VMA is found.
+ */
+void process_munmap(process_t *proc, uintptr_t addr, size_t length);
+
+/*
+ * process_alloc_ustack - map a user stack at the top of the address space.
+ *
+ * Maps USTACK_SIZE bytes just below USTACK_TOP with PROT_READ|PROT_WRITE.
+ * Returns the initial user stack pointer (top of the mapping).
+ */
+uintptr_t process_alloc_ustack(process_t *proc);
