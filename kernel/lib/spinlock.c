@@ -1,33 +1,26 @@
-/**
- * spinlock.c: Simple spinlock implementation
- */
-
 #include <kernel/spinlock.h>
 #include <kernel/cpu.h>
 
-/* Acquire spinlock, deadlocks after counter is exhausted */
 bool spinlock_acquire(spinlock_t *lock) {
-	bool int_state = interrupt_state();
-	disable_interrupts();
-	volatile size_t deadlock_counter = 0;
-    for (;;) {
-        if (spinlock_test_and_acq(lock)) break;
-        if (++deadlock_counter >= 100000000) {
-            goto deadlock;
-        }
-#if defined (__x86_64__)
-        asm volatile ("pause");
-#endif
-    }
-    return int_state;
+    bool int_state = interrupt_state();
+    disable_interrupts();
 
-deadlock:
-	asm ("1: hlt; jmp 1b");
-	return 0;
+    /* Grab our position in line */
+    uint16_t ticket = __atomic_fetch_add(&lock->next_ticket, 1, __ATOMIC_RELAXED);
+
+    /* Spin until the lock holder finishes and serves our ticket.
+     * ACQUIRE pairs with the RELEASE in spinlock_release, ensuring all
+     * stores made inside the previous critical section are visible to us. */
+    while (__atomic_load_n(&lock->now_serving, __ATOMIC_ACQUIRE) != ticket) {
+        asm volatile ("pause");
+    }
+
+    return int_state;
 }
 
-/* Release spinlock */
-void spinlock_release(spinlock_t* lock, bool int_state) {
-	__atomic_store_n(&lock->lock, 0, __ATOMIC_SEQ_CST);
-	if (int_state == true) enable_interrupts();
+void spinlock_release(spinlock_t *lock, bool int_state) {
+    /* Advance now_serving to hand off to the next waiter.
+     * RELEASE makes our critical-section stores visible before the handoff. */
+    __atomic_fetch_add(&lock->now_serving, 1, __ATOMIC_RELEASE);
+    if (int_state) enable_interrupts();
 }
