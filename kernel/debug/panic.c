@@ -9,7 +9,7 @@
  *   5. Depth-gated rendering:
  *        depth 1 - full render to framebuffer + serial.
  *        depth 2 - emergency serial-only (framebuffer state unreliable).
- *        depth ≥ 3 - halt immediately, system is too broken to render.
+ *        depth >= 3 - halt immediately, system is too broken to render.
  *   6. Final halt loop.
  *
  * All paths are allocation-free and spinlock-free.  No kprintf is called;
@@ -142,7 +142,7 @@ static void _smp_freeze(void) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Exception name table (vectors 0–31)                                  */
+/* Exception name table (vectors 0-31)                                  */
 /* ------------------------------------------------------------------ */
 
 static const char *const g_exc_names[32] = {

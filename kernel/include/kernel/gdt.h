@@ -13,7 +13,7 @@
  * x86-64 Task State Segment.
  *
  * rsp0 is written by the scheduler on every context switch to the incoming
- * thread's kstack_top; the CPU loads it into RSP on ring-3 → ring-0
+ * thread's kstack_top; the CPU loads it into RSP on ring-3 -> ring-0
  * transitions (hardware interrupts, SYSCALL).
  */
 typedef struct __attribute__((packed)) {
@@ -34,14 +34,14 @@ typedef struct __attribute__((packed)) {
  *   entries[0]  0x00  null
  *   entries[1]  0x08  kernel code  64-bit  (access=0x9A, L=1)
  *   entries[2]  0x10  kernel data          (access=0x92)
- *   entries[3]  0x18  user data            (access=0xF2)  ← data BEFORE code
+ *   entries[3]  0x18  user data            (access=0xF2)  <- data BEFORE code
  *   entries[4]  0x20  user code   64-bit  (access=0xFA, L=1)
  *   tss_lo      0x28  TSS low 8 bytes  \  16-byte system
  *   tss_hi      0x30  TSS high 8 bytes /  descriptor
  *
  * User data (0x18) is placed before user code (0x20) so SYSRET works:
- *   STAR[63:48] = 0x10  →  CS = 0x10+16 = 0x20 (+RPL=3 → 0x23)
- *                           SS = 0x10+8  = 0x18 (+RPL=3 → 0x1B)
+ *   STAR[63:48] = 0x10  ->  CS = 0x10+16 = 0x20 (+RPL=3 -> 0x23)
+ *                           SS = 0x10+8  = 0x18 (+RPL=3 -> 0x1B)
  */
 typedef struct {
     uint64_t entries[5];   /* null, kcode, kdata, udata, ucode        */

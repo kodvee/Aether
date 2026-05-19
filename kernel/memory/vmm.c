@@ -70,7 +70,7 @@ uintptr_t mmu_virt_to_phys(pagemap_t *pagemap, uintptr_t virt) {
 
 /*
  * vmm_new_pagemap - allocate a fresh PML4 and copy the kernel's higher-half
- * entries (indices 256–511) so the new pagemap shares kernel mappings.
+ * entries (indices 256-511) so the new pagemap shares kernel mappings.
  * Used by the scheduler to create per-process address spaces.
  */
 pagemap_t *vmm_new_pagemap(void) {

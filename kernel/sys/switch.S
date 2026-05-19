@@ -115,7 +115,7 @@ context_enter:
  * mmu_kernel_pagemap by vmm_new_pagemap), so the kernel stack and code
  * remain accessible after the CR3 switch until IRETQ drops to ring-3.
  *
- * IRETQ frame (64-bit inter-privilege, 5 × 8 bytes, pushed in reverse):
+ * IRETQ frame (64-bit inter-privilege, 5 x 8 bytes, pushed in reverse):
  *   SS    = 0x1B (SEG_UDATA | RPL3)
  *   RSP   = user stack pointer
  *   RFLAGS= 0x202 (IF=1, reserved bit 1 set)

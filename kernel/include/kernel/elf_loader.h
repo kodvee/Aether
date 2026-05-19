@@ -7,7 +7,7 @@
 /*
  * Elf64_Phdr - 64-bit program header (not yet in base/usr/include/elf.h).
  *
- * NOTE: in the 64-bit layout, p_flags immediately follows p_type — unlike
+ * NOTE: in the 64-bit layout, p_flags immediately follows p_type -- unlike
  * the 32-bit struct where p_flags comes last.
  */
 typedef struct {

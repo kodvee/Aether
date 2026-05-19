@@ -7,7 +7,7 @@
  *   1. Parse and validate ELF header.
  *   2. For each PT_LOAD segment: call process_mmap (which zeroes the pages),
  *      then copy the file image in via the HHDM (the user pagemap is NOT
- *      loaded into CR3 during the copy — we walk it with mmu_virt_to_phys).
+ *      loaded into CR3 during the copy -- we walk it with mmu_virt_to_phys).
  *   3. Set proc->brk to the page-ceiling of the highest loaded address.
  *   4. Allocate user stack; carve back 64 bytes (already zeroed) for the
  *      initial ABI stack frame: argc=0, argv/envp/auxv terminators = NULL.
@@ -125,7 +125,7 @@ struct thread *elf_load_user(const void *elf_data, size_t elf_size,
         const Elf64_Phdr *ph = &phdrs[i];
         if (ph->p_type != PT_LOAD || !ph->p_memsz) continue;
 
-        /* Translate ELF PF_* → kernel PROT_* (bit values differ) */
+        /* Translate ELF PF_* -> kernel PROT_* (bit values differ) */
         uint32_t prot = 0;
         if (ph->p_flags & PF_R) prot |= PROT_READ;
         if (ph->p_flags & PF_W) prot |= PROT_WRITE;
@@ -188,7 +188,7 @@ struct thread *elf_load_user(const void *elf_data, size_t elf_size,
 void init_spawn(void) {
     size_t size = (size_t)(__init_elf_end - __init_elf_start);
     if (!size) {
-        kprintf("init: no embedded binary — placeholder build\n");
+        kprintf("init: no embedded binary -- placeholder build\n");
         return;
     }
 

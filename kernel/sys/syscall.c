@@ -20,17 +20,17 @@
 
 /*
  * STAR encoding:
- *   [47:32] kernel CS selector (0x08)  — SYSCALL sets CS = this, SS = this+8
- *   [63:48] user   CS base    (0x10)  — SYSRETQ sets CS = this+16|3 = 0x23
+ *   [47:32] kernel CS selector (0x08)  -- SYSCALL sets CS = this, SS = this+8
+ *   [63:48] user   CS base    (0x10)  -- SYSRETQ sets CS = this+16|3 = 0x23
  *                                                    SS = this+8 |3 = 0x1B
  */
 #define STAR_VAL  ((0x0010ULL << 48) | (0x0008ULL << 32))
 
 /*
  * SFMASK: bits set here are cleared from RFLAGS on SYSCALL entry.
- *   bit  8 (TF) — disable single-step
- *   bit  9 (IF) — disable interrupts until the kernel stack is ready
- *   bit 10 (DF) — clear direction flag (SysV ABI requirement)
+ *   bit  8 (TF) -- disable single-step
+ *   bit  9 (IF) -- disable interrupts until the kernel stack is ready
+ *   bit 10 (DF) -- clear direction flag (SysV ABI requirement)
  */
 #define SFMASK_VAL ((1u << 8) | (1u << 9) | (1u << 10))
 

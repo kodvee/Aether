@@ -286,7 +286,7 @@ void schedule(void) {
 
     next->state         = THREAD_RUNNING;
     cpu->current_thread = next;
-    cpu->tss.rsp0       = next->kstack_top;   /* ring-3 → ring-0 stack */
+    cpu->tss.rsp0       = next->kstack_top;   /* ring-3 -> ring-0 stack */
     cpu->syscall_ksp    = next->kstack_top;
 
     spinlock_release(&cpu->run_queue_lock, irq);

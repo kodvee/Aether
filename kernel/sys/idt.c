@@ -128,7 +128,7 @@ struct regs* isr_handler(struct regs* r) {
 
 		default: {
 			uint64_t vec = r->int_no;
-			/* Dynamic IRQ dispatch: all installed vectors 32–254 */
+			/* Dynamic IRQ dispatch: all installed vectors 32-254 */
 			if (vec >= 32 && vec < 255) {
 				irq_t h = irqs[vec - 32];
 				if (h) return h(r);

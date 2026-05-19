@@ -1,7 +1,7 @@
 /*
  * slab.c - kernel slab allocator
  *
- * Small allocations (≤ SLAB_MAX_SIZE) come from per-size-class caches.
+ * Small allocations (<= SLAB_MAX_SIZE) come from per-size-class caches.
  * Each cache manages a linked list of 4 KiB pages; objects within a page
  * form an embedded free-list.  When a page is exhausted a new one is
  * allocated from the PMM and prepended to the cache's list.

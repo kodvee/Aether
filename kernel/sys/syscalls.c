@@ -5,7 +5,7 @@
  * binaries linked against musl will work without a shim layer.
  *
  * Argument convention (x86-64 Linux ABI):
- *   rdi, rsi, rdx, r10, r8, r9  — args 1–6
+ *   rdi, rsi, rdx, r10, r8, r9  -- args 1-6
  *   Note: r10 carries arg 4 (NOT rcx, which SYSCALL clobbers with the RIP).
  */
 
@@ -30,7 +30,7 @@
 #define MAP_FAILED     ((uintptr_t)-1)
 
 /* ------------------------------------------------------------------ */
-/* access_ok — user pointer validation                                  */
+/* access_ok -- user pointer validation                                  */
 /* ------------------------------------------------------------------ */
 
 /*
@@ -42,7 +42,7 @@
  *   2. [addr, addr+len) does not wrap around 64-bit space.
  *   3. The entire range is below the user/kernel boundary.
  *
- * This is a necessary but not sufficient check — it does not verify that
+ * This is a necessary but not sufficient check -- it does not verify that
  * every page in the range is actually mapped.  That will be added once we
  * have a reliable "walk the VMA list" helper.
  */
@@ -94,8 +94,8 @@ static uint64_t sys_write(syscall_frame_t *f) {
 /* ------------------------------------------------------------------ */
 
 /*
- * open(path, flags, mode) — no VFS yet; every path returns -ENOENT.
- * close(fd) — fd 0/1/2 are always valid sinks; others don't exist.
+ * open(path, flags, mode) -- no VFS yet; every path returns -ENOENT.
+ * close(fd) -- fd 0/1/2 are always valid sinks; others don't exist.
  */
 static uint64_t sys_open(syscall_frame_t *f) {
     (void)f;
@@ -116,7 +116,7 @@ static uint64_t sys_close(syscall_frame_t *f) {
  * mprotect(addr, len, prot)
  *
  * Full remapping requires walking each VMA and calling mmu_map_page with
- * new flags — deferred until the VMM gets a vma_protect helper.  For now
+ * new flags -- deferred until the VMM gets a vma_protect helper.  For now
  * we return success so musl can mark its stack-guard page PROT_NONE
  * without faulting; the guard simply won't enforce.
  */
@@ -189,7 +189,7 @@ static uint64_t sys_brk(syscall_frame_t *f) {
 /* ------------------------------------------------------------------ */
 
 /*
- * ioctl(fd, request, ...) — no tty support yet.
+ * ioctl(fd, request, ...) -- no tty support yet.
  * -ENOTTY tells musl that fd is not a terminal; it will fall back to
  * unbuffered I/O rather than line-buffering, which is the right behavior.
  */
@@ -274,7 +274,7 @@ struct timespec {
  *
  * Both CLOCK_REALTIME and CLOCK_MONOTONIC are served from the HPET counter,
  * which gives monotonic time since hpet_init().  Absolute wall time is not
- * available until we read the RTC — callers that need wall time get a
+ * available until we read the RTC -- callers that need wall time get a
  * monotonic value, which is correct for relative measurements.
  *
  * hpetTickPeriod is in femtoseconds per tick (10^-15 s).
@@ -292,7 +292,7 @@ static uint64_t sys_clock_gettime(syscall_frame_t *f) {
 
     uint64_t count   = hpet_get_count();
     /* hpetTickPeriod is in femtoseconds/tick; divide by 1e6 for ns/tick.
-     * Integer truncation is acceptable — max error ~1 ns/tick. */
+     * Integer truncation is acceptable -- max error ~1 ns/tick. */
     uint64_t ns_per_tick = hpetTickPeriod / 1000000ULL;
     uint64_t ns          = count * ns_per_tick;
 

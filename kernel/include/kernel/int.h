@@ -27,7 +27,7 @@ struct idt_pointer {
 /*
  * IDT/IRQ invariants:
  *   - idt_init() must be called before irq_install/irq_get/irq_uninstall.
- *   - Dynamic vectors are allocated via idt_allocate() (range 32–254).
+ *   - Dynamic vectors are allocated via idt_allocate() (range 32-254).
  *   - Vector 255 is the SMP halt IPI and must not be installed as an IRQ.
  *   - irq_install/irq_get/irq_uninstall are not interrupt-safe; call from
  *     normal context only (interrupts may be enabled).
@@ -35,7 +35,7 @@ struct idt_pointer {
 
 typedef struct regs* (*irq_t)(struct regs* r);
 
-#define IRQ_COUNT 224   /* vectors 32–255 */
+#define IRQ_COUNT 224   /* vectors 32-255 */
 
 void    idt_init(void);
 void    idt_reload(void);

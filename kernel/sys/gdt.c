@@ -17,7 +17,7 @@
 
 /* Flat 64-bit segment descriptor as a raw uint64_t.
  * access: access byte (bits [47:40])
- * flags:  upper nibble of byte 6  (bits [55:52]); L=1 → 0x2 for 64-bit code */
+ * flags:  upper nibble of byte 6  (bits [55:52]); L=1 -> 0x2 for 64-bit code */
 static inline uint64_t seg64(uint8_t access, uint8_t flags) {
     return ((uint64_t)access << 40) | ((uint64_t)(flags & 0xF) << 52);
 }
@@ -73,7 +73,7 @@ void gdt_load_core(struct core *cpu) {
     core_gdt_t *g = &c->gdt;
     tss_t      *t = &c->tss;
 
-    /* Standard flat segments — same layout as boot_gdt except user data
+    /* Standard flat segments -- same layout as boot_gdt except user data
      * (0x18) and user code (0x20) are swapped for SYSRET compatibility. */
     g->entries[0] = 0;                   /* null           0x00 */
     g->entries[1] = seg64(0x9A, 0x2);   /* kernel code    0x08 */

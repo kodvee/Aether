@@ -62,7 +62,7 @@ The kernel is **Unix-influenced at the userspace boundary**. Process behavior, f
 |--------|-------|----------|
 | Higher half kernel | `0xffffffff80000000` | Kernel text, rodata, data, bss |
 | Physical memory map | `0xffff800000000000` | Direct-mapped physical memory |
-| User space | `0x0000000000000000` – `0x00007fffffffffff` | Per-process user mappings |
+| User space | `0x0000000000000000` - `0x00007fffffffffff` | Per-process user mappings |
 
 ### Subsystem Dependency Order
 
@@ -70,18 +70,18 @@ Subsystems are layered. Higher layers may depend on lower layers; lower layers m
 
 ```
 [ hardware / ACPI / CPUID ]
-        ↓
+        |
 [ PMM -> VMM -> Slab allocator ]
-        ↓
+        |
 [ GDT / IDT / LAPIC / HPET / SMP ]
-        ↓
+        |
 [ ELF / Panic / Logging / ktest ]
-        ↓
+        |
 [ Scheduler / Process model ]
-        ↓
-[ VFS / Syscall ABI / Drivers ]        ← not yet implemented
-        ↓
-[ Userspace ]                          ← not yet implemented
+        |
+[ VFS / Syscall ABI / Drivers ]        <- not yet implemented
+        |
+[ Userspace ]                          <- not yet implemented
 ```
 
 ---
@@ -154,7 +154,7 @@ Memory management in Aether follows strict ownership rules. Every allocation has
 |-------|-----------|-------------|-----------|
 | Physical | PMM bitmap | 4 KiB pages | Explicit: caller frees |
 | Virtual | VMM page tables | 4 KiB pages | Tied to address space |
-| Kernel heap | Slab allocator | 8 B – 2 KiB + large | Explicit: caller frees |
+| Kernel heap | Slab allocator | 8 B - 2 KiB + large | Explicit: caller frees |
 
 `malloc()` / `free()` are the general kernel heap interface. They are backed by the slab allocator for small objects and fall through to the VMM for large allocations.
 
@@ -242,7 +242,7 @@ Observability is a first-class architectural concern. Every major subsystem must
 The panic subsystem provides unified fatal error reporting with:
 
 - Atomic SMP ownership (one CPU renders, all others halt).
-- Depth-gated rendering: full diagnostics at depth 1, serial-only emergency at depth 2, immediate halt at depth ≥ 3.
+- Depth-gated rendering: full diagnostics at depth 1, serial-only emergency at depth 2, immediate halt at depth >= 3.
 - Full register dump, decoded exception info, and stack trace with resolved symbols.
 - CPU info, kernel version, and build metadata.
 - No dependency on `kprintf` or any spinlock - output goes directly to flanterm and COM1.
@@ -296,11 +296,11 @@ Tests communicate results to CI through the QEMU `isa-debug-exit` device: exit c
 
 ### Compatibility Goal
 
-The long-term goal is to run unmodified Linux x86_64 binaries and libraries (musl, glibc) without a translation layer. This is a hard design constraint that must be honoured from the start — retrofitting ABI compatibility after a divergent interface is built is not feasible.
+The long-term goal is to run unmodified Linux x86_64 binaries and libraries (musl, glibc) without a translation layer. This is a hard design constraint that must be honoured from the start -- retrofitting ABI compatibility after a divergent interface is built is not feasible.
 
 This means:
 
-- **Syscall numbers match Linux exactly** (x86_64 — `read=0`, `write=1`, `open=2`, ...).
+- **Syscall numbers match Linux exactly** (x86_64 -- `read=0`, `write=1`, `open=2`, ...).
 - **Syscall entry via `SYSCALL`/`SYSRET`**, not `INT 0x80`.
 - **All structs exposed to userspace** (`stat`, `timespec`, `iovec`, `sigaction`, signal numbers, `mmap`/`open` flag values, `errno` values) must match Linux layouts byte-for-byte.
 - **Dynamic linking must work**: the ELF loader must handle `PT_INTERP` so that `ld-linux.so` or musl's dynamic linker can be loaded. Without this only static binaries run.
@@ -346,7 +346,7 @@ Milestones are listed in dependency order. Each milestone should produce a clean
 | Virtual memory manager (VMM) | Stable | Kernel page tables, higher-half mapping |
 | Slab allocator | Stable | Fixed-size caches, large-object fallthrough |
 | GDT | Stable | TSS per core |
-| IDT / ISR dispatch | Stable | Dynamic IRQ allocation (vectors 32–254), SMP halt vector |
+| IDT / ISR dispatch | Stable | Dynamic IRQ allocation (vectors 32-254), SMP halt vector |
 | LAPIC / IOAPIC | Stable | Timer, IPI, SMP bringup |
 | HPET | Stable | Used for LAPIC calibration |
 | SMP bringup | Stable | All APs reach idle, per-core GS |

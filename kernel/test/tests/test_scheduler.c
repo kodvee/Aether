@@ -421,7 +421,7 @@ KTEST("sched-thread-create-tid-monotone", "scheduler",
 static void test_thread_create_list_nodes_detached(ktest_ctx_t *ctx) {
     thread_t *t = thread_create(&kernel_process, _entry_a);
     KT_ASSERT_NONNULL(t);
-    /* list_node_init leaves the node pointing to itself — not on any list */
+    /* list_node_init leaves the node pointing to itself -- not on any list */
     KT_CHECK(t->list_node.next == &t->list_node);
     KT_CHECK(t->list_node.prev == &t->list_node);
     KT_CHECK(t->wq_node.next   == &t->wq_node);
@@ -542,7 +542,7 @@ KTEST("sched-init-idempotent", "scheduler",
       KT_FLAG_NONE, test_sched_init_idempotent);
 
 /* ================================================================== */
-/* Group 8: thread_ready_on — enqueue without execution                */
+/* Group 8: thread_ready_on -- enqueue without execution                */
 /* ================================================================== */
 
 static void test_thread_ready_on_state(ktest_ctx_t *ctx) {
@@ -746,7 +746,7 @@ static void test_waitq_wake_one_dequeues(ktest_ctx_t *ctx) {
 
     KT_CHECK(!list_empty(&wq.waiters));
 
-    /* Wake one — must move the thread to the run queue */
+    /* Wake one -- must move the thread to the run queue */
     wait_queue_wake_one(&wq);
 
     /* Wait queue must now be empty */

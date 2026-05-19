@@ -59,9 +59,9 @@ static inline uint64_t read_cr4(void) {
 typedef struct core {
     /*
      * SYSCALL fast-path state.  These two fields MUST remain at byte offsets
-     * 0 and 8 within core_t — syscall.S hardcodes %gs:0 and %gs:8.
+     * 0 and 8 within core_t -- syscall.S hardcodes %gs:0 and %gs:8.
      *
-     * syscall_ksp:    kernel stack pointer for ring-3 → ring-0 transitions.
+     * syscall_ksp:    kernel stack pointer for ring-3 -> ring-0 transitions.
      *                 Mirrors tss.rsp0; updated by the scheduler on every
      *                 context switch.
      * ustack_scratch: one-word scratch cell used by the syscall entry stub
@@ -90,7 +90,7 @@ typedef struct core {
 
     /* Per-core GDT and TSS.  Filled and loaded by gdt_load_core() during
      * core_start().  tss.rsp0 is updated by schedule() on every context
-     * switch so that ring-3 → ring-0 transitions land on the correct stack. */
+     * switch so that ring-3 -> ring-0 transitions land on the correct stack. */
     core_gdt_t     gdt;
     tss_t          tss;
 } core_t;

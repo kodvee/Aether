@@ -12,8 +12,8 @@
  *   IF=0, TF=0, DF=0 (cleared by SFMASK)
  *
  * %gs offsets inside core_t (must match cpu.h):
- *   %gs:0   syscall_ksp     — kernel stack pointer for this thread
- *   %gs:8   ustack_scratch  — one-word scratch for saving the user RSP
+ *   %gs:0   syscall_ksp     -- kernel stack pointer for this thread
+ *   %gs:8   ustack_scratch  -- one-word scratch for saving the user RSP
  *
  * syscall_frame_t layout on the kernel stack (must match syscall.h):
  *   0(%rsp)   rax       syscall number / return value
@@ -70,7 +70,7 @@ syscall_entry:
     mov  %r15, 112(%rsp)
 
     /* user_rsp is in the scratch cell; move it into the frame.
-     * Clobber %rax temporarily — it will be overwritten by the return value. */
+     * Clobber %rax temporarily -- it will be overwritten by the return value. */
     mov  %gs:8, %rax
     mov  %rax, 120(%rsp)      /* user_rsp */
 
@@ -98,7 +98,7 @@ syscall_entry:
     mov  96(%rsp), %r13
     mov 104(%rsp), %r14
     mov 112(%rsp), %r15
-    mov 120(%rsp), %rsp       /* restore user RSP — must be last stack access */
+    mov 120(%rsp), %rsp       /* restore user RSP -- must be last stack access */
 
     /* Step 8: swap GS back to user GS before returning to ring-3. */
     swapgs

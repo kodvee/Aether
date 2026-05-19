@@ -39,7 +39,7 @@ void process_destroy(process_t *proc) {
     KERNEL_ASSERT(proc != NULL);
     KERNEL_ASSERT(proc->thread_count == 0);
 
-    /* Drain VMA list — process_munmap removes each entry individually */
+    /* Drain VMA list -- process_munmap removes each entry individually */
     list_node_t *n, *tmp;
     list_for_each_safe(n, tmp, &proc->vma_list) {
         vma_t *vma = list_entry(n, vma_t, node);
