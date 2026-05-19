@@ -1,20 +1,32 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
-typedef struct node {
-	struct node* previous;
-	void* value;
-	struct node* next;
-} node_t;
+typedef struct dlist_node {
+    struct dlist_node *prev;
+    struct dlist_node *next;
+    void *value;
+} dlist_node_t;
 
-node_t* dlist_create_empty();
-uint64_t dlist_get_length(node_t* head);
-void dlist_push(node_t* head, void* value); // Push from last
-node_t* dlist_pop(node_t* head); // Pop from last
-void dlist_push_at(node_t* head, void* value, uint64_t index);
-node_t* dlist_pop_at(node_t* head, uint64_t index);
-void dlist_destroy_item(node_t* head, uint64_t index);
-void dlist_destroy_array(node_t* head);
-void* dlist_get(node_t* head, uint64_t index);
-void dlist_remove_item(node_t* head, void* item);
+typedef struct dlist {
+    dlist_node_t *head;
+    dlist_node_t *tail;
+    size_t length;
+} dlist_t;
+
+dlist_t *dlist_create(void);
+void     dlist_destroy(dlist_t *list);
+
+void     dlist_push_back(dlist_t *list, void *value);
+void     dlist_push_front(dlist_t *list, void *value);
+void    *dlist_pop_back(dlist_t *list);
+void    *dlist_pop_front(dlist_t *list);
+
+void    *dlist_get(dlist_t *list, size_t index);
+size_t   dlist_get_length(dlist_t *list);
+void     dlist_remove(dlist_t *list, void *value);
+
+/* Convenience aliases */
+#define dlist_push(list, val) dlist_push_back(list, val)
+#define dlist_pop(list)       dlist_pop_back(list)

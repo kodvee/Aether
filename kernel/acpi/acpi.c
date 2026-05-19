@@ -25,11 +25,11 @@ static volatile struct limine_rsdp_request rsdp_request = {
 };
 
 /* Lists of lapic, ioapic, ioapic_so, ioapic_nmi and lapic_nmi */
-node_t* madt_lapic = NULL;
-node_t* madt_ioapic = NULL;
-node_t* madt_ioapic_so = NULL;
-node_t* madt_ioapic_nmi = NULL;
-node_t* madt_lapic_nmi = NULL;
+dlist_t* madt_lapic = NULL;
+dlist_t* madt_ioapic = NULL;
+dlist_t* madt_ioapic_so = NULL;
+dlist_t* madt_ioapic_nmi = NULL;
+dlist_t* madt_lapic_nmi = NULL;
 
 struct rsdp_structure* rsdp = NULL;
 struct rsdt* rsdt = NULL;
@@ -84,11 +84,11 @@ bool apic_enabled;
 
 /* Initialize ACPI, Find and add all lapic, ioapic, ioiapic_so, lapic_nmi, ioapic_nmi to their respective lists */
 void __init acpi_init(void) {
-	madt_lapic = dlist_create_empty();
-	madt_ioapic = dlist_create_empty();
-	madt_ioapic_so = dlist_create_empty();
-	madt_ioapic_nmi = dlist_create_empty();
-	madt_lapic_nmi = dlist_create_empty();
+	madt_lapic = dlist_create();
+	madt_ioapic = dlist_create();
+	madt_ioapic_so = dlist_create();
+	madt_ioapic_nmi = dlist_create();
+	madt_lapic_nmi = dlist_create();
 
 	/* System has no ACPI, panic because we cant access some crucial tables */
 	if(rsdp_request.response->address == NULL) panic("System has no ACPI", NULL);

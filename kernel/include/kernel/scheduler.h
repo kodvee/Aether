@@ -6,7 +6,7 @@
 struct process {
 	const char* name;
 	const char* description;
-	node_t* threads;
+	dlist_t* threads;
 	int pid;
 
 	pagemap_t* pagemap;

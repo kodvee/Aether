@@ -211,11 +211,11 @@ struct fadt {
 
 extern struct fadt *fadt;
 
-extern node_t* madt_lapic;
-extern node_t* madt_ioapic;
-extern node_t* madt_ioapic_so;
-extern node_t* madt_ioapic_nmi;
-extern node_t* madt_lapic_nmi;
+extern dlist_t* madt_lapic;
+extern dlist_t* madt_ioapic;
+extern dlist_t* madt_ioapic_so;
+extern dlist_t* madt_ioapic_nmi;
+extern dlist_t* madt_lapic_nmi;
 extern uint64_t lapic_address;
 
 struct acpi_common_header* acpi_find_table(char t_sig[static 4]);
