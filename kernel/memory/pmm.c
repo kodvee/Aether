@@ -4,6 +4,7 @@
 #include <kernel/kprintf.h>
 #include <kernel/macros.h>
 #include <kernel/cpu.h>
+#include <kernel/panic.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <limine.h>
@@ -76,9 +77,7 @@ uintptr_t mmu_request_frame(void) {
         }
     }
     spinlock_release(&pmm_lock, s);
-    kprintf("pmm: fatal: out of memory\n");
-    fatal();
-    return 0;
+    SUBSYS_PANIC("pmm", "Out of physical memory");
 }
 
 /* mmu_request_frames — find num physically contiguous free frames. */
@@ -101,9 +100,8 @@ uintptr_t mmu_request_frames(uint64_t num) {
         }
     }
     spinlock_release(&pmm_lock, s);
-    kprintf("pmm: fatal: out of contiguous memory (%lu frames)\n", num);
-    fatal();
-    return 0;
+    kprintf("pmm: out of contiguous memory (%lu frames)\n", num);
+    SUBSYS_PANIC("pmm", "Out of contiguous physical memory");
 }
 
 /*
@@ -126,7 +124,7 @@ void mmu_free_frames(void *addr, uint64_t pages) {
 
 uint64_t clean_reclaimable_memory(void) {
     struct limine_memmap_response *resp = memmap_request.response;
-    if (!resp || !resp->entry_count) { fatal(); return 0; }
+    if (!resp || !resp->entry_count) SUBSYS_PANIC("pmm", "Memory map unavailable during reclaim");
 
     uint64_t cleared = 0;
     for (uint64_t i = 0; i < resp->entry_count; i++) {
@@ -145,7 +143,7 @@ uint64_t clean_reclaimable_memory(void) {
 
 void __init pmm_init(void) {
     struct limine_memmap_response *resp = memmap_request.response;
-    if (!resp || !resp->entry_count) fatal();
+    if (!resp || !resp->entry_count) SUBSYS_PANIC("pmm", "No memory map from bootloader");
 
     /* Total addressable memory span */
     uint64_t top = 0;
@@ -167,7 +165,7 @@ void __init pmm_init(void) {
             break;
         }
     }
-    if (!bitmap_phys) fatal();
+    if (!bitmap_phys) SUBSYS_PANIC("pmm", "No usable region large enough for PMM bitmap");
 
     /* Access the bitmap through the HHDM (limine provides this before we switch) */
     bitmap = (uint8_t *)(bitmap_phys + HHDM_HIGHER_HALF);

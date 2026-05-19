@@ -10,13 +10,11 @@
 #include <kernel/ports.h>
 #include <kernel/cpu.h>
 #include <kernel/macros.h>
+#include <kernel/panic.h>
 #include <memory.h>
 #include <kernel/hpet.h>
 
 spinlock_t printlock = SPINLOCK_ZERO;
-
-/* To crash if no framebuffers */
-extern void fatal(void);
 
 /* Needed by eyalroz printf */
 void putchar_(char c) {
@@ -69,10 +67,8 @@ void __init printf_init(void) {
 	/* Set the first framebuffer */
 	framebuffer = framebuffer_request.response->framebuffers[0];
 
-	/* If it is NULL then crash */
-	if(framebuffer == NULL) {
-		fatal();
-	}
+	if (framebuffer == NULL)
+		SUBSYS_PANIC("printf", "No framebuffer provided by bootloader");
 
 	/* Set default colors */
 	uint32_t default_bg_black = 0x000000;

@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <kernel/types.h>
 #include <kernel/msr.h>
+#include <kernel/panic.h>
 
 extern uint64_t coreCount;
 
@@ -89,12 +90,6 @@ struct regs {
 	/* Pushed by interrupt */
 	uintptr_t rip, cs, rflags, rsp, ss;
 };
-
-void panic(const char* desc, struct regs* r);
-
-static void fatal(void) {
-	asm volatile("1: hlt; jmp 1b");
-}
 
 static inline void* read_gs_register() {
 	return (void*)rdmsr(0xC0000101);

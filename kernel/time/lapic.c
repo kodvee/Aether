@@ -15,6 +15,9 @@
 #include <kernel/int.h>
 #include <kernel/kprintf.h>
 
+/* Set to true after lapic_init completes; guards panic SMP freeze */
+bool lapic_initialized = false;
+
 /* Frequency at which lapic ticks */
 uint64_t frequency = 0;
 
@@ -89,4 +92,6 @@ void __init lapic_init(void) {
 	mmu_map_page(mmu_kernel_pagemap, lapic_address, lapic_address - HHDM_HIGHER_HALF, PTE_PRESENT | PTE_WRITABLE);
 
 	lapic_write(LAPIC_REG_SPURIOUS, lapic_read(LAPIC_REG_SPURIOUS) | (1 << 8) | 0xff);
+
+	lapic_initialized = true;
 }

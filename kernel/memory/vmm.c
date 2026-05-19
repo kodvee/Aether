@@ -3,6 +3,7 @@
 #include <kernel/kprintf.h>
 #include <kernel/macros.h>
 #include <kernel/cpu.h>
+#include <kernel/panic.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <limine.h>
@@ -81,7 +82,8 @@ void mmu_switch_pagemap(pagemap_t *pagemap) {
 void __init vmm_init(void) {
     struct limine_memmap_response *resp  = memmap_request.response;
     struct limine_kernel_address_response *kaddr = kaddr_request.response;
-    if (!resp || !resp->entry_count || !kaddr) fatal();
+    if (!resp || !resp->entry_count || !kaddr)
+        SUBSYS_PANIC("vmm", "Missing memory map or kernel address from bootloader");
 
     mmu_kernel_pagemap = (pagemap_t *)(mmu_request_frame() + HHDM_HIGHER_HALF);
     __builtin_memset(mmu_kernel_pagemap, 0, PAGE_SIZE);

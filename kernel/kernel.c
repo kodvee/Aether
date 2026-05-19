@@ -17,7 +17,7 @@ extern void gdt_init(void);
 extern void pmm_init(void);
 extern void vmm_init(void);
 extern void idt_init(void);
-extern void symbols_init(void);
+extern void elf_init(void);
 extern void printf_init(void);
 extern void smp_init(void);
 extern void cpuinfo_init(void);
@@ -94,8 +94,8 @@ void _start(void) {
 	/* Initialize ACPI */
 	acpi_init();
 
-	/* Initialize kernel symbols */
-	symbols_init();
+	/* Parse kernel ELF image and build symbol index */
+	elf_init();
 
 	/* Load the CPU information */
 	cpuinfo_init();
@@ -110,6 +110,6 @@ void _start(void) {
 	/* Initialize multicore */
 	smp_init();
 
-	/* All done, hang the system */
-	asm ("1: hlt; jmp 1b");
+	/* All done */
+	asm volatile ("1: hlt; jmp 1b" ::: "memory");
 }

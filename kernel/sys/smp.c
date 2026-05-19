@@ -10,6 +10,7 @@
 #include <kernel/cpu.h>
 #include <kernel/int.h>
 #include <kernel/macros.h>
+#include <kernel/panic.h>
 #include <kernel/cpufeature.h>
 #include <kernel/apic.h>
 #include <kernel/msr.h>
@@ -59,9 +60,8 @@ void core_start(struct limine_smp_info *core) {
 	core_local->lapic_id = core->lapic_id;
 
 	/* Initialize LAPIC */
-	if(!cpu_has_feature(CPU_FEATURE_APIC)) {
-		panic("LAPIC is not supported", NULL);
-	}
+	if (!cpu_has_feature(CPU_FEATURE_APIC))
+		SUBSYS_PANIC("smp", "LAPIC not supported on this CPU");
 
 	lapic_init();
 	lapic_timer_calibrate(10000000);
@@ -111,11 +111,10 @@ void __init smp_init(void) {
 
 	/* Local array to keep track of the cores */
 	cpu_core_local = malloc(sizeof(core_t) * coreCount);
-	if(((uintptr_t)cpu_core_local % _Alignof(core_t)) != 0) {
-		/* cpu_core_local must be aligned or UBSAN will be actiavated */
-		kprintf("cpu_core_local found unaligned. Core count: %d, Size of the struct: %d, size of allocated memory: %d, alignment: %d, address returned: %p\n",
-			coreCount, sizeof(core_t), sizeof(cpu_core_local), _Alignof(core_t), cpu_core_local);
-		fatal();
+	if (((uintptr_t)cpu_core_local % _Alignof(core_t)) != 0) {
+		kprintf("smp: cpu_core_local unaligned at %p (count=%lu, align=%lu)\n",
+			cpu_core_local, coreCount, (unsigned long)_Alignof(core_t));
+		SUBSYS_PANIC("smp", "cpu_core_local allocation is misaligned");
 	}
 
 	/* Get the ID of the BSP core */

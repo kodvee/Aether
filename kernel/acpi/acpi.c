@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include <kernel/cpu.h>
 #include <kernel/macros.h>
+#include <kernel/panic.h>
 
 /* Request Limine for RSDP address */
 __attribute__((used, section(".requests")))
@@ -56,10 +57,9 @@ struct acpi_common_header* acpi_find_table(char t_sig[static 4]) {
 	}
 
 	kprintf("acpi: Could not find table \"");
-	for(int i = 0; i < 4; i++) kprintf("%c", t_sig[i]);
+	for (int i = 0; i < 4; i++) kprintf("%c", t_sig[i]);
 	kprintf("\"\n");
-	panic("Could not find the required header", NULL);
-	return NULL;
+	SUBSYS_PANIC("acpi", "Required ACPI table not found");
 }
 
 /* Check if header exists based on 4 character signature */
@@ -90,8 +90,8 @@ void __init acpi_init(void) {
 	madt_ioapic_nmi = dlist_create();
 	madt_lapic_nmi = dlist_create();
 
-	/* System has no ACPI, panic because we cant access some crucial tables */
-	if(rsdp_request.response->address == NULL) panic("System has no ACPI", NULL);
+	if (rsdp_request.response == NULL || rsdp_request.response->address == NULL)
+		SUBSYS_PANIC("acpi", "System has no ACPI (RSDP not provided by bootloader)");
 	rsdp = (struct rsdp_structure*)(rsdp_request.response->address);
 	kprintf("acpi: RDSP structure located at %p, signature: \"", rsdp);
 	for(int i = 0; i < 8; i++) kprintf("%c", rsdp->sig[i]);
@@ -113,7 +113,7 @@ void __init acpi_init(void) {
 	struct madt* madt = (struct madt*)acpi_find_table("APIC");
 	lapic_address = madt->lapic_address + HHDM_HIGHER_HALF;
 	kprintf("acpi: Local APIC address: %p\n", lapic_address);
-	if(madt == NULL) panic("System has no MADT structure\n", NULL);
+	if (madt == NULL) SUBSYS_PANIC("acpi", "No MADT structure in ACPI tables");
 
 	uint64_t offset = 0;
 	for(;;) {

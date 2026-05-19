@@ -1,6 +1,6 @@
 /**
  * idt.c: Interrupt Descriptor table
- * 
+ *
  * Handles the loading, initializing of idt
  * Handles setting ISRs, Directing interrupts to be handled as exceptions or IRQs
  */
@@ -10,11 +10,12 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <kernel/kprintf.h>
-#include <kernel/symbols.h>
+#include <kernel/elf.h>
 #include <kernel/spinlock.h>
 #include <kernel/mmu.h>
 #include <kernel/cpu.h>
 #include <kernel/macros.h>
+#include <kernel/panic.h>
 
 static struct idt_pointer idtp;
 static idt_entry_t idt[256];
@@ -43,7 +44,7 @@ uint8_t idt_allocate(void) {
 	bool int_state = spinlock_acquire(&lock);
 
 	if(free_vector == 255) {
-		panic("IDT Vectors exhauted\n", NULL);
+		SUBSYS_PANIC("idt", "IDT vectors exhausted");
 	}
 
 	uint8_t ret = free_vector++;
@@ -82,26 +83,32 @@ void idt_reload(void) {
 
 /**
  * Install a function as irq handler for a vector
- * 
+ *
  * @param irq: Function with signature [regs* (*irq_t)(struct regs* r)], is called when irq is called at @param index
  */
 void irq_install(irq_t irq, int index) {
 	irqs[index - 32] = irq;
-	kprintf("irq: Install IRQ %d to %p\n", index - 32, symbols_search((uintptr_t)irqs[index - 32]));
+	const char *irq_sym = NULL;
+	elf_sym_by_addr(&kelf, (uintptr_t)irqs[index - 32], &irq_sym);
+	kprintf("irq: Install IRQ %d at %p [%s]\n",
+	        index - 32, (void *)(uintptr_t)irqs[index - 32],
+	        irq_sym ? irq_sym : "???");
 }
 
-/* Exception handler, makes things tidy */
-static void _exception(struct regs* r, const char* description) {
-	if((r->cs & 0x3) == 0) {
-	 	panic(description, r);
-	}
+/*
+ * CPU exception handler — only panics for kernel-mode faults (ring 0).
+ * User-mode exceptions are left for a future signal/kill path.
+ */
+static void _exception(struct regs *r, const char *description) {
+	if ((r->cs & 0x3) == 0)
+		EXCEPTION_PANIC("cpu", description, r);
 }
 
 /* Initial Common IRQ Handler, makes things tidy. Just calls the specific handler and returns */
 struct regs* _handle_irq(struct regs* r, int irqIndex) {
 	irq_t handler = irqs[irqIndex];
 	if(!handler) {
-		panic("Received IRQ without handler", r);
+		PANIC_REGS("Received IRQ without handler", r);
 	}
 	return handler(r);
 }
@@ -122,12 +129,12 @@ struct regs* isr_handler(struct regs* r) {
 		EXC(5, "bound range exceeded")
 		EXC(6, "invalid opcode")
 		EXC(7, "device not available")
-		case 8: panic("Double fault", r); break;
+		case 8: DOUBLE_FAULT_PANIC(r); break;
 		EXC(10, "invalid TSS")
 		EXC(11, "segment not present")
 		EXC(12, "stack-segment fault")
-		case 13: panic("General protection fault", r); break;
-		case 14: panic("page fault", r); break;
+		case 13: EXCEPTION_PANIC("cpu", "general protection fault", r); break;
+		case 14: PAGE_FAULT_PANIC(r); break;
 		EXC(16, "floating point exception")
 		EXC(17, "alignment check")
 		EXC(18, "machine check")
@@ -141,10 +148,9 @@ struct regs* isr_handler(struct regs* r) {
 		/* IRQs */
 		IRQ(32);
 
-		/* HALT Signal */
+		/* HALT Signal — secondary cores quietly halt during SMP panic freeze */
 		case 255: {
-			kprintf("Received halt signal on core %lu\n", core_local->lapic_id);
-			asm ("1: hlt; jmp 1b");
+			asm volatile ("cli; 1: hlt; jmp 1b" ::: "memory");
 		} break;
 
 		/* Interrupt on unknown vector */

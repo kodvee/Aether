@@ -10,6 +10,7 @@
 #include <kernel/mmu.h>
 #include <kernel/cpu.h>
 #include <kernel/macros.h>
+#include <kernel/panic.h>
 #include <stdbool.h>
 
 /* HPET Structure */
@@ -53,10 +54,8 @@ void __init hpet_init(void) {
 	hpetGeneralCapabilities = hpet_read(0);
 	hpetTickPeriod = (uint32_t)(hpetGeneralCapabilities >> 32);
 
-	/* Tick period is too long! */
-	if(hpetTickPeriod > 0x05F5E100) {
-		panic("HPET Tick period > 100ns", NULL);
-	}
+	if (hpetTickPeriod > 0x05F5E100)
+		SUBSYS_PANIC("hpet", "HPET tick period exceeds 100 ns");
 
 	/* Print HPET details */
 	kprintf("hpet: Found HPET ");
