@@ -14,6 +14,7 @@
 #include <kernel/macros.h>
 #include <kernel/panic.h>
 #include <kernel/kprintf.h>
+#include <kernel/scheduler.h>
 
 static struct idt_pointer idtp;
 static idt_entry_t idt[256];
@@ -110,7 +111,7 @@ struct regs* isr_handler(struct regs* r) {
 		EXC(11, "segment not present")
 		EXC(12, "stack-segment fault")
 		case 13: EXCEPTION_PANIC("cpu", "general protection fault", r); break;
-		case 14: PAGE_FAULT_PANIC(r); break;
+		case 14: page_fault_handle(r); break;
 		EXC(16, "x87 floating-point exception")
 		EXC(17, "alignment check")
 		EXC(18, "machine check")

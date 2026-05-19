@@ -73,11 +73,10 @@ static bool validate_header(const Elf64_Ehdr *hdr, size_t size) {
 }
 
 /*
- * copy_segment - copy [src, src+filesz) into the already-mapped user pages
- * at virtual address vaddr.
+ * copy_segment - copy [src, src+filesz) into user virtual memory at vaddr.
  *
- * The user pagemap is not the current CR3.  We translate each page through
- * mmu_virt_to_phys and write via the HHDM so there is no CR3 switch here.
+ * The user pagemap is not the current CR3.  process_ensure_page allocates
+ * a frame on demand and returns the physical address; we write via the HHDM.
  */
 static void copy_segment(process_t *proc, uintptr_t vaddr,
                           const uint8_t *src, size_t filesz) {
@@ -85,7 +84,7 @@ static void copy_segment(process_t *proc, uintptr_t vaddr,
     while (remaining > 0) {
         uintptr_t page_base = PAGE_ALIGN_DOWN(vaddr);
         uintptr_t page_off  = vaddr - page_base;
-        uintptr_t phys      = mmu_virt_to_phys(proc->pagemap, page_base);
+        uintptr_t phys      = process_ensure_page(proc, page_base);
         KERNEL_ASSERT(phys != 0);
 
         uint8_t *dst  = (uint8_t *)(phys + HHDM_HIGHER_HALF) + page_off;

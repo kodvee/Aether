@@ -214,7 +214,7 @@ Normal operational failures (OOM for user memory, invalid syscall arguments, bad
 
 ### Current State
 
-The kernel initializes all subsystems on the BSP (Bootstrap Processor), brings secondary processors online through LAPIC INIT/SIPI, and runs a preemptive SMP scheduler. Each core runs independent threads driven by LAPIC timer ticks. Kernel threads can block on wait queues and are cleaned up by a dedicated reaper thread.
+The kernel initializes all subsystems on the BSP (Bootstrap Processor), brings secondary processors online through LAPIC INIT/SIPI, and runs a preemptive SMP scheduler. Each core runs independent threads driven by LAPIC timer ticks. Kernel threads can block on wait queues and are cleaned up by a dedicated reaper thread. A process model with VMA-based address space management, demand paging, and mmap/munmap/mprotect support is implemented. Static ELF64 binaries are loaded and executed as user processes via a SYSCALL/SYSRET syscall path with 16 implemented syscalls.
 
 ### Intended Model
 
@@ -323,18 +323,18 @@ The kernel's internal design (scheduler, VFS, memory manager) is unconstrained. 
 
 Milestones are listed in dependency order. Each milestone should produce a clean, testable subsystem before the next begins.
 
-| # | Milestone | Key Deliverables |
-|---|-----------|-----------------|
-| 1 | **Scheduler and kernel threading** | Preemptive SMP scheduler, per-core run queues, kernel thread lifecycle, context switch |
-| 2 | **Process abstraction** | Process struct, address space isolation, kernel/user stack separation, process lifecycle |
-| 3 | **Syscall ABI** | Syscall dispatch, user/kernel boundary, argument validation, error propagation |
-| 4 | **Virtual filesystem** | VFS layer, file descriptor table, `open`/`read`/`write`/`close`, `stat`, directory traversal |
-| 5 | **Initial userspace** | ELF loader, `exec`, initial user process, basic `libc` compatibility |
-| 6 | **Device and driver framework** | Driver registration model, character device interface, `/dev` integration |
-| 7 | **IPC and synchronization** | Pipes, signals, futex-like primitives, shared memory |
-| 8 | **Networking** | Network stack, socket interface, TCP/IP |
-| 9 | **Advanced VM** | `mmap`, demand paging, copy-on-write, page reclaim |
-| 10 | **POSIX userspace** | Port of a shell, coreutils, eventually GNU toolchain |
+| # | Milestone | Status | Key Deliverables |
+|---|-----------|--------|-----------------|
+| 1 | **Scheduler and kernel threading** | Done | Preemptive SMP scheduler, per-core run queues, kernel thread lifecycle, context switch |
+| 2 | **Process abstraction** | Done | Process struct, VMA-based address space, demand paging, mmap/munmap/mprotect, process lifecycle |
+| 3 | **Syscall ABI** | Done (partial) | SYSCALL/SYSRET dispatch, user/kernel boundary, argument validation, 16 syscalls |
+| 4 | **Virtual filesystem** | Not started | VFS layer, file descriptor table, `open`/`read`/`write`/`close`, `stat`, directory traversal |
+| 5 | **Initial userspace** | Partial | ELF loader done, init process running; no VFS yet, no `exec` |
+| 6 | **Device and driver framework** | Not started | Driver registration model, character device interface, `/dev` integration |
+| 7 | **IPC and synchronization** | Not started | Pipes, signals, futex-like primitives, shared memory |
+| 8 | **Networking** | Not started | Network stack, socket interface, TCP/IP |
+| 9 | **Advanced VM** | Not started | Copy-on-write, page reclaim, huge pages |
+| 10 | **POSIX userspace** | Not started | Port of a shell, coreutils, eventually GNU toolchain |
 
 ---
 
@@ -343,9 +343,9 @@ Milestones are listed in dependency order. Each milestone should produce a clean
 | Subsystem | Status | Notes |
 |-----------|--------|-------|
 | Physical memory manager (PMM) | Stable | Bitmap allocator, contiguous frame support |
-| Virtual memory manager (VMM) | Stable | Kernel page tables, higher-half mapping |
+| Virtual memory manager (VMM) | Stable | Kernel page tables, HHDM, user pagemaps |
 | Slab allocator | Stable | Fixed-size caches, large-object fallthrough |
-| GDT | Stable | TSS per core |
+| GDT | Stable | No TSS per core yet |
 | IDT / ISR dispatch | Stable | Dynamic IRQ allocation (vectors 32-254), SMP halt vector |
 | LAPIC / IOAPIC | Stable | Timer, IPI, SMP bringup |
 | HPET | Stable | Used for LAPIC calibration |
@@ -356,8 +356,9 @@ Milestones are listed in dependency order. Each milestone should produce a clean
 | Structured logging | Stable | `klog` with severity levels |
 | Test framework (ktest) | Stable | 66 tests, CI-ready QEMU exit code |
 | Scheduler | Stable | Round-robin SMP, thread_block, idle threads, reaper |
-| Process model | Not started | - |
-| Syscall ABI | Not started | - |
+| Process model | Stable | VMA management, demand paging, mmap/munmap/mprotect |
+| Syscall ABI | Stable | SYSCALL/SYSRET, 16 syscalls (write, mmap, brk, arch_prctl, ...) |
+| ELF loader | Stable | Static ELF64, init user process spawned at boot |
 | VFS | Not started | - |
 | Drivers | Not started | - |
 

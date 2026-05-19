@@ -1,5 +1,8 @@
 #pragma once
 
+/* Forward declaration; full definition in <kernel/cpu.h> */
+struct regs;
+
 /*
  * scheduler.h - execution context and scheduling foundation
  *
@@ -486,3 +489,34 @@ void process_munmap(process_t *proc, uintptr_t addr, size_t length);
  * Returns the initial user stack pointer (top of the mapping).
  */
 uintptr_t process_alloc_ustack(process_t *proc);
+
+/*
+ * process_ensure_page - guarantee the page covering vaddr is backed by a
+ * physical frame. Allocates and zeroes a frame if the page is not yet present.
+ *
+ * Returns the physical address of the frame, or 0 if vaddr is not covered
+ * by any VMA or the VMA has PROT_NONE.
+ *
+ * Safe to call from fault context (no sleeping; PMM spinlock only).
+ */
+uintptr_t process_ensure_page(process_t *proc, uintptr_t vaddr);
+
+/*
+ * process_mprotect - change protection flags for [addr, addr+length).
+ *
+ * Splits VMAs at the range boundaries as needed, updates prot flags,
+ * and re-maps all already-present pages with the new PTE flags + INVLPG.
+ *
+ * Returns 0 on success, -EINVAL if addr is not page-aligned.
+ */
+errno_t process_mprotect(process_t *proc, uintptr_t addr, size_t length,
+                          uint32_t prot);
+
+/*
+ * page_fault_handle - vector 14 exception handler.
+ *
+ * Called from isr_handler for every page fault. Kernel faults always panic.
+ * User not-present faults attempt demand paging via process_ensure_page.
+ * User protection faults and out-of-VMA faults call thread_exit().
+ */
+void page_fault_handle(struct regs *r);

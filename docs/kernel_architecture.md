@@ -56,8 +56,9 @@ The design philosophy and long-term goals live in [README.md](../README.md); thi
 | Test framework | `test/runner.c` | Stable | `<kernel/ktest.h>` |
 | Execution context model | `include/kernel/scheduler.h` | Stable | `<kernel/scheduler.h>` |
 | Scheduler | `sys/scheduler.c` | Stable | `<kernel/scheduler.h>` |
-| Process model | - | **Not implemented** | - |
-| Syscall ABI | - | **Not implemented** | - |
+| Process model | `sys/process.c` | Stable | `<kernel/scheduler.h>` |
+| Syscall ABI | `sys/syscall.c`, `sys/syscalls.c` | Stable | `<kernel/syscall.h>` |
+| ELF loader | `sys/elf_loader.c` | Stable | `<kernel/elf_loader.h>` |
 | VFS | - | **Not implemented** | - |
 
 ---
@@ -76,12 +77,12 @@ The design philosophy and long-term goals live in [README.md](../README.md); thi
                     Formula: vaddr = paddr + hhdm_offset
                              paddr = vaddr - hhdm_offset
 
-0x0000000000000000  User space (future)
-          –
+0x0000000000000000  User space
+         to
 0x00007fffffffffff
 ```
 
-**Physical ↔ virtual conversion rules:**
+**Physical <-> virtual conversion rules:**
 - Never store a virtual address in a `paddr_t`.
 - Never add HHDM to an already-virtual address.
 - `HHDM_HIGHER_HALF` (`hhdm_offset`) is read-only after `pmm_init()`.
@@ -94,28 +95,42 @@ Subsystems are layered. A lower layer must never call upward into a higher layer
 
 ```
 [ Hardware / CPUID / ACPI tables ]
-          ↓
-[ PMM ]  ← hhdm_offset set here; no allocator yet
-          ↓
-[ VMM ]  ← kernel pagemap activated; HHDM mapped
-          ↓
-[ GDT ]  ← segment registers loaded
-          ↓
-[ IDT ]  ← interrupt vectors installed; irqs[] allocated via slab
-          ↓
+          |
+          v
+[ PMM ]  <- hhdm_offset set here; no allocator yet
+          |
+          v
+[ VMM ]  <- kernel pagemap activated; HHDM mapped
+          |
+          v
+[ GDT ]  <- segment registers loaded
+          |
+          v
+[ IDT ]  <- interrupt vectors installed; irqs[] allocated via slab
+          |
+          v
 [ Slab / malloc / free ]
-          ↓
-[ Per-CPU bootstrap (core_bsp) ]  ← GS register set
-          ↓
+          |
+          v
+[ Per-CPU bootstrap (core_bsp) ]  <- GS register set
+          |
+          v
 [ printf / flanterm ]
-          ↓
+          |
+          v
 [ CPU feature detection / ACPI / ELF / HPET / SMP ]
-          ↓
+          |
+          v
 [ ktest (test builds only) ]
-          ↓
-[ Scheduler / Process model ]
-          ↓
-[ VFS / Syscall ABI / Drivers ]   ← NOT YET IMPLEMENTED
+          |
+          v
+[ Scheduler ]
+          |
+          v
+[ Process model / Syscall ABI / ELF loader ]
+          |
+          v
+[ VFS / Drivers ]   <- NOT YET IMPLEMENTED
 ```
 
 **Consequence:** malloc is not available until after `slab_init()`. Any subsystem that calls `malloc` must be initialised after slab. The IDT allocation is the first post-slab consumer.
@@ -235,7 +250,7 @@ PTE_NX        (1<<63)  // no-execute
 - Stack size is `KSTACK_SIZE` (16 KiB = 4 pages).
 - Returns the **top** of the stack (highest address). RSP should be initialized to this value.
 - Stack bottom = `top - KSTACK_SIZE`.
-- Mapped `PTE_PRESENT | PTE_WRITABLE | PTE_NX`.
+- Frames are served from the PMM and surfaced through the pre-existing HHDM mapping. `kstack_alloc` and `kstack_free` do NO page-table manipulation; they rely on `vmm_init()` having permanently mapped all USABLE physical frames into the HHDM.
 - No guard pages in the current implementation. Stack overflow corrupts adjacent memory.
 
 ---
@@ -358,7 +373,7 @@ thread_t *t = list_entry(node_ptr, thread_t, list_node);
 
 **Current state:** 5-entry flat GDT (null, kernel code 64, kernel data 64, user code 64, user data 64). All cores share this GDT.
 
-**What is missing:** No TSS (Task State Segment) per core. The README states "TSS per core" as a goal; it is not yet implemented. A TSS is required for the kernel stack pointer on privilege-level transitions from user mode (syscall / interrupt from ring 3). This must be added before user-space execution is attempted.
+**What is missing:** No TSS (Task State Segment) per core. A TSS provides RSP0 (the kernel stack pointer) for interrupt-driven ring-3 -> ring-0 transitions. Without it, hardware interrupts arriving while in user mode may not switch to the correct kernel stack. The current kernel reaches user space via `IRETQ` and returns via `SYSCALL`/`SYSRET`, which does not use the TSS for its stack switch. However, faults and IRQs taken in user mode are unsafe without RSP0 set. Adding a per-core TSS with a valid RSP0 is required for a fully correct user-mode implementation.
 
 Segment selectors:
 - `0x08` - kernel code
@@ -388,7 +403,7 @@ Reads CPUID leaf 1 (ECX + EDX) into a single `uint64_t cpu_features`. Access via
 cpu_has_feature(CPU_FEATURE_APIC)  // returns non-zero if present
 ```
 
-Feature constants are defined as bit positions (bits 0–31 = ECX, bits 32–63 = EDX from CPUID leaf 1).
+Feature constants are defined as bit positions (bits 0-31 = ECX, bits 32-63 = EDX from CPUID leaf 1).
 
 ---
 
@@ -446,7 +461,7 @@ After `smp_init()` all cores are in the idle halt loop with interrupts enabled. 
 
 ### 9.4 Lock Ordering
 
-The full kernel lock hierarchy (outermost → innermost):
+The full kernel lock hierarchy (outermost -> innermost):
 
 ```
 process_t.lock
@@ -476,7 +491,7 @@ Rules:
 
 ### 10.1 IDT
 
-256-entry IDT shared by all cores (all cores load the same `idtp`). Vectors 0–31 are CPU exceptions. Vectors 32–254 are dynamically allocated hardware/software IRQs. Vector 255 is the SMP halt IPI (used by the panic subsystem to freeze all APs).
+256-entry IDT shared by all cores (all cores load the same `idtp`). Vectors 0-31 are CPU exceptions. Vectors 32-254 are dynamically allocated hardware/software IRQs. Vector 255 is the SMP halt IPI (used by the panic subsystem to freeze all APs).
 
 ### 10.2 ISR Stubs
 
@@ -502,7 +517,7 @@ struct regs {
 ### 10.4 Dynamic IRQ Allocation
 
 ```c
-uint8_t idt_allocate(void);                     // returns next free vector (32–254)
+uint8_t idt_allocate(void);                     // returns next free vector (32-254)
 void    irq_install(irq_t handler, int vector); // install handler for vector
 irq_t   irq_get(int vector);                    // query installed handler
 void    irq_uninstall(int vector);              // remove handler
@@ -512,7 +527,7 @@ void    irq_uninstall(int vector);              // remove handler
 
 ### 10.5 Exception Dispatch
 
-CPU exceptions (vectors 0–30) are dispatched in `isr_handler()`. Kernel-mode exceptions call the appropriate panic macro. User-mode exceptions currently drop the exception with a TODO comment - signal delivery to the thread is not implemented.
+CPU exceptions (vectors 0-30) are dispatched in `isr_handler()`. Kernel-mode exceptions call the appropriate panic macro. User-mode exceptions currently drop the exception with a TODO comment - signal delivery to the thread is not implemented.
 
 ### 10.6 Interrupt Context Rules
 
@@ -597,16 +612,16 @@ typedef struct thread {
 
 ```
 THREAD_CREATED -> THREAD_READY -> THREAD_RUNNING
-                      ↑               ↓
-                  (wake)        THREAD_BLOCKED
-                      ↑               ↓
-                      └───────────────┘
+                       ^                |
+                   (wake)         THREAD_BLOCKED
+                       ^                |
+                       +----------------+
                     (wait_queue_wake_*)
 
                (any state) -> THREAD_DEAD  (via thread_exit())
 ```
 
-All state transitions are made while holding `thread_t.lock`, except the RUNNING → BLOCKED transition in `thread_block()` which also requires the wait queue lock immediately after. State transitions inside `schedule()` happen under `run_queue_lock`.
+All state transitions are made while holding `thread_t.lock`, except the RUNNING -> BLOCKED transition in `thread_block()` which also requires the wait queue lock immediately after. State transitions inside `schedule()` happen under `run_queue_lock`.
 
 ### 12.3 Context Switch Register State
 
@@ -628,14 +643,23 @@ Only callee-saved registers are stored. The context switch stub (`sys/switch.S`)
 typedef struct process {
     pid_t        pid;
     const char  *name;
-    pagemap_t   *pagemap;    // NULL for kernel processes
+
+    pagemap_t   *pagemap;       // address space; NULL for kernel processes
     spinlock_t   lock;
-    list_head_t  threads;    // thread_t via thread_t.list_node
+
+    list_head_t  threads;       // thread_t via thread_t.list_node
     uint32_t     thread_count;
+
+    // User address space
+    list_head_t  vma_list;      // vma_t entries; protected by lock
+    uintptr_t    mmap_base;     // watermark for next anonymous mmap()
+    uintptr_t    brk;           // program break; set by ELF loader
 } process_t;
 ```
 
 `kernel_process` is the global kernel process. All kernel threads (idle, reaper, and any other kernel worker) are attached to it with `pagemap == NULL`.
+
+VMA management is implemented in `sys/process.c`. Each `vma_t` records a page-aligned `[base, base+length)` region with `PROT_*` flags. `process_mmap` adds VMAs and allocates physical frames lazily (demand paging via `page_fault_handle`). `process_munmap` removes VMAs and unmaps pages. `process_mprotect` splits VMAs at range boundaries and re-maps pages with updated PTE flags.
 
 ### 12.5 Wait Queue (`wait_queue_t`)
 
@@ -677,16 +701,34 @@ Kernel stacks are owned by their `thread_t`. The reaper calls `kstack_free(t->ks
 ### 12.9 Scheduler API Summary
 
 ```c
-void      scheduler_init(void);                            // one-time global setup
-thread_t *thread_create(process_t *p, void (*fn)(void));  // allocate + init thread
-void      thread_ready(thread_t *t);                       // enqueue on current core
-void      thread_ready_on(thread_t *t, cpu_id_t core);     // enqueue on specific core
-void      scheduler_enter(void) __noreturn;                // BSP enters scheduler
-void      schedule(void);                                  // pick next thread (tick hook)
-void      thread_block(wait_queue_t *wq);                  // block on wait queue
-void      thread_exit(void) __noreturn;                    // terminate calling thread
+// Scheduler lifecycle
+void      scheduler_init(void);
+void      scheduler_enter(void) __noreturn;
+void      schedule(void);
+
+// Kernel thread management
+thread_t *thread_create(process_t *p, void (*fn)(void));
+void      thread_ready(thread_t *t);
+void      thread_ready_on(thread_t *t, cpu_id_t core);
+void      thread_block(wait_queue_t *wq);
+void      thread_exit(void) __noreturn;
 void      wait_queue_wake_one(wait_queue_t *wq);
 void      wait_queue_wake_all(wait_queue_t *wq);
+
+// User thread
+thread_t *thread_create_user(process_t *proc, uintptr_t entry, uintptr_t usp);
+
+// Process lifecycle
+process_t *process_create(const char *name);
+void       process_destroy(process_t *proc);
+
+// Process address space
+uintptr_t  process_mmap(process_t *proc, uintptr_t hint, size_t length, uint32_t prot);
+void       process_munmap(process_t *proc, uintptr_t addr, size_t length);
+errno_t    process_mprotect(process_t *proc, uintptr_t addr, size_t length, uint32_t prot);
+uintptr_t  process_alloc_ustack(process_t *proc);
+uintptr_t  process_ensure_page(process_t *proc, uintptr_t vaddr);
+void       page_fault_handle(struct regs *r);
 ```
 
 ---
@@ -742,7 +784,7 @@ DOUBLE_FAULT_PANIC(regs)            // double fault
 **Depth gating:**
 - Depth 1: full diagnostic to framebuffer + serial.
 - Depth 2 (nested panic): serial only, minimal output.
-- Depth ≥ 3: immediate halt, system too broken to render.
+- Depth >= 3: immediate halt, system too broken to render.
 
 **Safe in:** interrupt context, panic context, before `printf_init()`, before `slab_init()`.  
 **Not safe in:** nothing - this is the path of last resort.
@@ -883,25 +925,22 @@ All prerequisites for the base scheduler are met. The scheduler is implemented a
 
 The following subsystems and features are explicitly absent from the current codebase.
 
-| Feature | Blocking on |
-|---------|------------|
-| Process model | Scheduler ✓, `fork`/`exec` semantics |
-| Syscall ABI | Process model, TSS per core |
-| VFS / file descriptors | Process model |
-| ELF loader (user) | VFS, process model |
-| Signal delivery | Process model |
-| User-mode address space | VMM `mmap` support, process model |
-| TSS per core | GDT expansion |
-| `mmap` / demand paging | VMM, process model |
-| Monotonic clock API | HPET or TSC wrap-up |
+| Feature | Notes |
+|---------|-------|
+| TSS per core | Required for correct kernel-stack switch on ring-3 interrupts/faults |
+| VFS / file descriptors | Blocks: open, read, fstat, dynamic linking |
+| Signal delivery | Blocks: kill, sigaction, POSIX process control |
+| `fork` / `exec` | Blocks: shell, conventional process lifecycle |
+| Dynamic ELF loading | Requires PT_INTERP support and dynamic linker; only static binaries work today |
+| Monotonic clock API | HPET counter exposed via clock_gettime; no wall-clock RTC sync |
 | `kprintf` re-entrancy / locking | Currently unsafe in interrupt context |
-| Guard pages on kernel stacks | VMM support for unmapped pages |
-| Reference counting | Object lifecycle subsystem |
-| Mutex / semaphore | `thread_block()` ✓ — API can now be built |
-| Per-thread CPU time accounting | Tick hook ✓ — needs per-thread counter in `thread_t` |
-| SMP load balancing | Scheduler ✓ — needs work-stealing or push policy |
-| MLFQ / CFS scheduling | Current round-robin sufficient until user processes exist |
-| `interrupt_depth` tracking | ISR stub modification |
+| Guard pages on kernel stacks | Needs VMM support for intentionally unmapped pages |
+| Reference counting | Needed before shared object lifetimes become non-trivial |
+| Mutex / semaphore | thread_block() exists -- the sleeping-lock API can now be built on top |
+| Per-thread CPU time accounting | Tick hook exists -- needs a per-thread counter in thread_t |
+| SMP load balancing | Scheduler exists -- needs work-stealing or push policy |
+| MLFQ / CFS scheduling | Round-robin is sufficient until user-process workloads justify it |
+| `interrupt_depth` tracking | Field exists in core_t but ISR stubs do not increment it |
 | Drivers | Driver model not designed |
 | Networking | Not designed |
 | IPC | Not designed |

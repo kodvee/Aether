@@ -109,19 +109,39 @@ static uint64_t sys_close(syscall_frame_t *f) {
 }
 
 /* ------------------------------------------------------------------ */
+/* sys_munmap (nr = 11)                                                 */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_munmap(syscall_frame_t *f) {
+    uintptr_t addr   = (uintptr_t)f->rdi;
+    size_t    length = (size_t)f->rsi;
+
+    if (addr & (PAGE_SIZE - 1)) return (uint64_t)-(int64_t)EINVAL;
+    if (!length)                return (uint64_t)-(int64_t)EINVAL;
+
+    process_t *proc = current_proc();
+    if (!proc) return (uint64_t)-(int64_t)ENOMEM;
+
+    process_munmap(proc, addr, length);
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
 /* sys_mprotect (nr = 10)                                               */
 /* ------------------------------------------------------------------ */
 
-/*
- * mprotect(addr, len, prot)
- *
- * Full remapping requires walking each VMA and calling mmu_map_page with
- * new flags -- deferred until the VMM gets a vma_protect helper.  For now
- * we return success so musl can mark its stack-guard page PROT_NONE
- * without faulting; the guard simply won't enforce.
- */
 static uint64_t sys_mprotect(syscall_frame_t *f) {
-    (void)f;
+    uintptr_t addr   = (uintptr_t)f->rdi;
+    size_t    length = (size_t)f->rsi;
+    uint32_t  prot   = (uint32_t)f->rdx;
+
+    if (!length) return 0;
+
+    process_t *proc = current_proc();
+    if (!proc) return (uint64_t)-(int64_t)ENOMEM;
+
+    errno_t err = process_mprotect(proc, addr, length, prot);
+    if (err < 0) return (uint64_t)(int64_t)err;
     return 0;
 }
 
@@ -357,6 +377,7 @@ void syscalls_init(void) {
     syscall_register(3,   sys_close);
     syscall_register(9,   sys_mmap);
     syscall_register(10,  sys_mprotect);
+    syscall_register(11,  sys_munmap);
     syscall_register(12,  sys_brk);
     syscall_register(16,  sys_ioctl);
     syscall_register(39,  sys_getpid);
