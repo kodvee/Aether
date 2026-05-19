@@ -41,7 +41,7 @@ _test-iso:
 
 define run-test-iso
 	@echo "Running tests (mode: $(1))..."
-	@timeout 60 qemu-system-x86_64 $(TEST_EMU_ARGS) -cdrom $(ISO_NAME)-test.iso; \
+	@timeout 60 qemu-system-x86_64 $(TEST_EMU_ARGS) -cdrom $(ISO_NAME)-test.iso < /dev/null; \
 	ec=$$?; \
 	if [ $$ec -eq 1 ]; then \
 		echo "  [PASSED] All tests passed."; \

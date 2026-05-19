@@ -185,6 +185,10 @@ static uint64_t sys_brk(syscall_frame_t *f) {
         return proc->brk;
 
     if (new_brk <= proc->brk) {
+        uintptr_t page_new = PAGE_ALIGN_UP(new_brk);
+        uintptr_t page_old = PAGE_ALIGN_UP(proc->brk);
+        if (page_old > page_new)
+            process_munmap(proc, page_new, page_old - page_new);
         proc->brk = new_brk;
         return proc->brk;
     }
@@ -368,25 +372,208 @@ static uint64_t sys_set_tid_address(syscall_frame_t *f) {
 }
 
 /* ------------------------------------------------------------------ */
+/* sys_read (nr = 0)                                                    */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_read(syscall_frame_t *f) {
+    int    fd    = (int)(int32_t)f->rdi;
+    char  *buf   = (char *)(uintptr_t)f->rsi;
+    size_t count = (size_t)f->rdx;
+
+    if (fd != 0)
+        return (uint64_t)-(int64_t)EBADF;
+    if (!count) return 0;
+    if (!access_ok(buf, count))
+        return (uint64_t)-(int64_t)EFAULT;
+
+    /* No stdin attached; report EOF */
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_fstat (nr = 5)                                                   */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Linux x86-64 struct stat layout, 144 bytes total.
+ * Defined here to avoid including a POSIX stat.h in kernel code.
+ */
+struct kernel_stat {
+    uint64_t st_dev;
+    uint64_t st_ino;
+    uint64_t st_nlink;
+    uint32_t st_mode;
+    uint32_t st_uid;
+    uint32_t st_gid;
+    uint32_t __pad0;
+    uint64_t st_rdev;
+    int64_t  st_size;
+    int64_t  st_blksize;
+    int64_t  st_blocks;
+    int64_t  st_atim_sec;
+    int64_t  st_atim_nsec;
+    int64_t  st_mtim_sec;
+    int64_t  st_mtim_nsec;
+    int64_t  st_ctim_sec;
+    int64_t  st_ctim_nsec;
+    int64_t  __unused[3];
+};
+
+static uint64_t sys_fstat(syscall_frame_t *f) {
+    int                 fd = (int)(int32_t)f->rdi;
+    struct kernel_stat *st = (struct kernel_stat *)(uintptr_t)f->rsi;
+
+    if (fd < 0 || fd > 2)
+        return (uint64_t)-(int64_t)EBADF;
+    if (!access_ok(st, sizeof(*st)))
+        return (uint64_t)-(int64_t)EFAULT;
+
+    __builtin_memset(st, 0, sizeof(*st));
+    st->st_mode    = 0020622u;   /* S_IFCHR | rw--w--w- */
+    st->st_blksize = PAGE_SIZE;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_rt_sigaction / sys_rt_sigprocmask (nr = 13 / 14)               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * No signal delivery yet.  Return 0 and zero the old-action / old-mask
+ * output buffers so callers see a clean slate (SIG_DFL, empty mask).
+ */
+static uint64_t sys_rt_sigaction(syscall_frame_t *f) {
+    void *oldact = (void *)(uintptr_t)f->rdx;
+    if (oldact) {
+        if (!access_ok(oldact, 32u))
+            return (uint64_t)-(int64_t)EFAULT;
+        __builtin_memset(oldact, 0, 32u);
+    }
+    return 0;
+}
+
+static uint64_t sys_rt_sigprocmask(syscall_frame_t *f) {
+    void  *oldset  = (void *)(uintptr_t)f->rdx;
+    size_t setsize = (size_t)f->r10;
+    if (oldset) {
+        if (!access_ok(oldset, setsize))
+            return (uint64_t)-(int64_t)EFAULT;
+        __builtin_memset(oldset, 0, setsize);
+    }
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_writev (nr = 20)                                                 */
+/* ------------------------------------------------------------------ */
+
+struct iovec {
+    void  *iov_base;
+    size_t iov_len;
+};
+
+static uint64_t sys_writev(syscall_frame_t *f) {
+    int                fd     = (int)(int32_t)f->rdi;
+    const struct iovec *iov   = (const struct iovec *)(uintptr_t)f->rsi;
+    int                iovcnt = (int)(int32_t)f->rdx;
+
+    if (fd != 1 && fd != 2)
+        return (uint64_t)-(int64_t)EBADF;
+    if (iovcnt <= 0 || iovcnt > 1024)
+        return (uint64_t)-(int64_t)EINVAL;
+    if (!access_ok(iov, (size_t)iovcnt * sizeof(struct iovec)))
+        return (uint64_t)-(int64_t)EFAULT;
+
+    size_t total = 0;
+    for (int i = 0; i < iovcnt; i++) {
+        const char *base = (const char *)iov[i].iov_base;
+        size_t      len  = iov[i].iov_len;
+        if (!len) continue;
+        if (!access_ok(base, len))
+            return (uint64_t)-(int64_t)EFAULT;
+        kwrite(base, len);
+        total += len;
+    }
+    return (uint64_t)total;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_getuid / sys_getgid / sys_geteuid / sys_getegid (102/104/107/108) */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_getuid(syscall_frame_t *f)  { (void)f; return 0; }
+static uint64_t sys_getgid(syscall_frame_t *f)  { (void)f; return 0; }
+static uint64_t sys_geteuid(syscall_frame_t *f) { (void)f; return 0; }
+static uint64_t sys_getegid(syscall_frame_t *f) { (void)f; return 0; }
+
+/* ------------------------------------------------------------------ */
+/* sys_futex (nr = 202)                                                 */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_futex(syscall_frame_t *f) {
+    (void)f;
+    return (uint64_t)-(int64_t)ENOSYS;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_prlimit64 (nr = 302)                                             */
+/* ------------------------------------------------------------------ */
+
+#define RLIM_INFINITY  0xFFFFFFFFFFFFFFFFULL
+#define RLIMIT_STACK   3
+#define RLIMIT_NOFILE  7
+
+static uint64_t sys_prlimit64(syscall_frame_t *f) {
+    int       pid      = (int)(int32_t)f->rdi;
+    int       resource = (int)(int32_t)f->rsi;
+    uint64_t *old_lim  = (uint64_t *)(uintptr_t)f->r10;
+
+    if (pid != 0)
+        return (uint64_t)-(int64_t)EPERM;
+
+    if (old_lim) {
+        if (!access_ok(old_lim, 16u))
+            return (uint64_t)-(int64_t)EFAULT;
+        uint64_t cur = RLIM_INFINITY, max = RLIM_INFINITY;
+        if (resource == RLIMIT_STACK)  cur = 8u * 1024u * 1024u;
+        if (resource == RLIMIT_NOFILE) { cur = 1024; max = 4096; }
+        old_lim[0] = cur;
+        old_lim[1] = max;
+    }
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
 /* Registration                                                         */
 /* ------------------------------------------------------------------ */
 
 void syscalls_init(void) {
+    syscall_register(0,   sys_read);
     syscall_register(1,   sys_write);
     syscall_register(2,   sys_open);
     syscall_register(3,   sys_close);
+    syscall_register(5,   sys_fstat);
     syscall_register(9,   sys_mmap);
     syscall_register(10,  sys_mprotect);
     syscall_register(11,  sys_munmap);
     syscall_register(12,  sys_brk);
+    syscall_register(13,  sys_rt_sigaction);
+    syscall_register(14,  sys_rt_sigprocmask);
     syscall_register(16,  sys_ioctl);
+    syscall_register(20,  sys_writev);
     syscall_register(39,  sys_getpid);
     syscall_register(60,  sys_exit);
     syscall_register(63,  sys_uname);
+    syscall_register(102, sys_getuid);
+    syscall_register(104, sys_getgid);
+    syscall_register(107, sys_geteuid);
+    syscall_register(108, sys_getegid);
     syscall_register(110, sys_getppid);
     syscall_register(158, sys_arch_prctl);
     syscall_register(186, sys_gettid);
+    syscall_register(202, sys_futex);
     syscall_register(218, sys_set_tid_address);
     syscall_register(228, sys_clock_gettime);
     syscall_register(231, sys_exit);
+    syscall_register(302, sys_prlimit64);
 }

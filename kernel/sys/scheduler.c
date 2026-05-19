@@ -75,9 +75,18 @@ static void reaper_fn(void) {
         spinlock_release(&dead_list_lock, irq);
 
         while ((n = list_pop_front(&local)) != NULL) {
-            thread_t *t = list_entry(n, thread_t, list_node);
+            thread_t  *t    = list_entry(n, thread_t, list_node);
+            process_t *proc = t->parent;
             kstack_free(t->kstack_top);
             free(t);
+
+            if (proc) {
+                bool pirq = spinlock_acquire(&proc->lock);
+                bool last = (--proc->thread_count == 0);
+                spinlock_release(&proc->lock, pirq);
+                if (last && proc != &kernel_process)
+                    process_destroy(proc);
+            }
         }
 
         thread_block(&reaper_wq);
@@ -149,6 +158,10 @@ thread_t *thread_create(process_t *parent, void (*entry)(void)) {
     t->ustack_top    = 0;           /* kernel thread; set by caller for user threads */
     list_node_init(&t->list_node);
     list_node_init(&t->wq_node);
+
+    bool pirq = spinlock_acquire(&parent->lock);
+    parent->thread_count++;
+    spinlock_release(&parent->lock, pirq);
 
     /*
      * Initial context for first execution:
