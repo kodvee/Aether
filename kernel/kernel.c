@@ -18,6 +18,7 @@
 #include <kernel/panic.h>
 #include <kernel/ktest.h>
 #include <kernel/scheduler.h>
+#include <kernel/vfs.h>
 #include <kernel/syscall.h>
 #include <kernel/elf_loader.h>
 #include <stdbool.h>
@@ -84,6 +85,17 @@ void _start(void) {
 
 	/* Register all built-in syscall handlers */
 	syscalls_init();
+
+	/* Initialise VFS, mount tmpfs at "/", mount devfs at "/dev" */
+	vfs_init();
+	{
+		inode_t *fs_root = tmpfs_create_root();
+		KERNEL_ASSERT(fs_root != NULL);
+		errno_t e = vfs_mount("/", fs_root);
+		KERNEL_ASSERT(e == EOK);
+		inode_unref(fs_root);
+	}
+	devfs_init();
 
 	core_bsp = malloc(sizeof(*core_bsp));
 	core_bsp->bsp            = true;

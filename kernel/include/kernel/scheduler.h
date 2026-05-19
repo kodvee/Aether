@@ -137,6 +137,34 @@ uintptr_t kstack_alloc(void);
 void kstack_free(uintptr_t stack_top);
 
 /* ------------------------------------------------------------------ */
+/* File descriptor table (embedded in process_t)                       */
+/* ------------------------------------------------------------------ */
+
+/*
+ * struct file and struct inode are defined fully in <kernel/vfs.h>.
+ * Forward declarations are sufficient here because fd_table_t and
+ * process_t only store pointers to them.
+ */
+struct file;
+struct inode;
+
+#define FD_TABLE_SIZE 256
+
+/*
+ * fd_table_t - per-process open file descriptor table.
+ *
+ * files[fd] is NULL for a free slot, non-NULL for an open file.
+ * cloexec[fd] is 1 if FD_CLOEXEC is set for this slot (close-on-exec).
+ * Protected by the owning process_t.lock for slot allocation.
+ * Long-running I/O borrows a file reference (file_ref / file_unref)
+ * and does NOT hold process_t.lock during the I/O operation.
+ */
+typedef struct {
+    struct file *files[FD_TABLE_SIZE];
+    uint8_t      cloexec[FD_TABLE_SIZE];  /* FD_CLOEXEC flag per slot */
+} fd_table_t;
+
+/* ------------------------------------------------------------------ */
 /* Forward declarations                                                 */
 /* ------------------------------------------------------------------ */
 
@@ -273,6 +301,16 @@ typedef struct process {
     list_head_t  vma_list;      /* vma_t entries; protected by lock        */
     uintptr_t    mmap_base;     /* watermark for next anonymous mmap()     */
     uintptr_t    brk;           /* program break; set by ELF loader        */
+
+    /* Working directory */
+    char          cwd_path[PATH_MAX];  /* absolute CWD, NUL-terminated    */
+    struct inode *cwd;                 /* CWD inode; one ref held          */
+
+    /* File creation mask */
+    uint32_t      umask;               /* applied to mode on open/mkdir    */
+
+    /* File descriptors; slots protected by lock for alloc/dealloc */
+    fd_table_t   fd_table;
 } process_t;
 
 /* ------------------------------------------------------------------ */

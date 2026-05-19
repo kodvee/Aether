@@ -11,6 +11,7 @@
 
 #include <kernel/syscall.h>
 #include <kernel/scheduler.h>
+#include <kernel/vfs.h>
 #include <kernel/cpu.h>
 #include <kernel/vmm.h>
 #include <kernel/kprintf.h>
@@ -78,34 +79,39 @@ static uint64_t sys_write(syscall_frame_t *f) {
     const char *buf   = (const char *)(uintptr_t)f->rsi;
     size_t      count = (size_t)f->rdx;
 
-    if (fd != 1 && fd != 2)
-        return (uint64_t)-(int64_t)EBADF;
-
     if (!count) return 0;
     if (!access_ok(buf, count))
         return (uint64_t)-(int64_t)EFAULT;
 
-    kwrite(buf, count);
-    return (uint64_t)count;
+    size_t  written = 0;
+    errno_t e = vfs_write(current_proc(), fd, buf, count, &written);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return (uint64_t)written;
 }
 
 /* ------------------------------------------------------------------ */
 /* sys_open / sys_close (nr = 2 / 3)                                   */
 /* ------------------------------------------------------------------ */
 
-/*
- * open(path, flags, mode) -- no VFS yet; every path returns -ENOENT.
- * close(fd) -- fd 0/1/2 are always valid sinks; others don't exist.
- */
 static uint64_t sys_open(syscall_frame_t *f) {
-    (void)f;
-    return (uint64_t)-(int64_t)ENOENT;
+    const char *path  = (const char *)(uintptr_t)f->rdi;
+    int         flags = (int)(int32_t)f->rsi;
+    uint32_t    mode  = (uint32_t)f->rdx;
+
+    if (!path || !access_ok(path, 1))
+        return (uint64_t)-(int64_t)EFAULT;
+
+    int fd = -1;
+    errno_t e = vfs_open(current_proc(), path, flags, mode, &fd);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return (uint64_t)(uint32_t)fd;
 }
 
 static uint64_t sys_close(syscall_frame_t *f) {
     int fd = (int)(int32_t)f->rdi;
-    if (fd >= 0 && fd <= 2) return 0;
-    return (uint64_t)-(int64_t)EBADF;
+    errno_t e = vfs_close(current_proc(), fd);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -212,14 +218,14 @@ static uint64_t sys_brk(syscall_frame_t *f) {
 /* sys_ioctl (nr = 16)                                                  */
 /* ------------------------------------------------------------------ */
 
-/*
- * ioctl(fd, request, ...) -- no tty support yet.
- * -ENOTTY tells musl that fd is not a terminal; it will fall back to
- * unbuffered I/O rather than line-buffering, which is the right behavior.
- */
 static uint64_t sys_ioctl(syscall_frame_t *f) {
-    (void)f;
-    return (uint64_t)-(int64_t)ENOTTY;
+    int           fd  = (int)(int32_t)f->rdi;
+    unsigned long req = (unsigned long)f->rsi;
+    uintptr_t     arg = (uintptr_t)f->rdx;
+
+    errno_t e = vfs_ioctl(current_proc(), fd, req, arg);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -380,14 +386,14 @@ static uint64_t sys_read(syscall_frame_t *f) {
     char  *buf   = (char *)(uintptr_t)f->rsi;
     size_t count = (size_t)f->rdx;
 
-    if (fd != 0)
-        return (uint64_t)-(int64_t)EBADF;
     if (!count) return 0;
     if (!access_ok(buf, count))
         return (uint64_t)-(int64_t)EFAULT;
 
-    /* No stdin attached; report EOF */
-    return 0;
+    size_t  n = 0;
+    errno_t e = vfs_read(current_proc(), fd, buf, count, &n);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return (uint64_t)n;
 }
 
 /* ------------------------------------------------------------------ */
@@ -423,14 +429,23 @@ static uint64_t sys_fstat(syscall_frame_t *f) {
     int                 fd = (int)(int32_t)f->rdi;
     struct kernel_stat *st = (struct kernel_stat *)(uintptr_t)f->rsi;
 
-    if (fd < 0 || fd > 2)
-        return (uint64_t)-(int64_t)EBADF;
     if (!access_ok(st, sizeof(*st)))
         return (uint64_t)-(int64_t)EFAULT;
 
+    vfs_stat_t vs;
+    errno_t e = vfs_fstat(current_proc(), fd, &vs);
+    if (e < 0) return (uint64_t)(int64_t)e;
+
     __builtin_memset(st, 0, sizeof(*st));
-    st->st_mode    = 0020622u;   /* S_IFCHR | rw--w--w- */
-    st->st_blksize = PAGE_SIZE;
+    st->st_ino     = vs.ino;
+    st->st_mode    = vs.mode;
+    st->st_nlink   = vs.nlink;
+    st->st_uid     = vs.uid;
+    st->st_gid     = vs.gid;
+    st->st_rdev    = vs.rdev;
+    st->st_size    = (int64_t)vs.size;
+    st->st_blksize = vs.blksize ? vs.blksize : PAGE_SIZE;
+    st->st_blocks  = vs.blocks;
     return 0;
 }
 
@@ -477,8 +492,6 @@ static uint64_t sys_writev(syscall_frame_t *f) {
     const struct iovec *iov   = (const struct iovec *)(uintptr_t)f->rsi;
     int                iovcnt = (int)(int32_t)f->rdx;
 
-    if (fd != 1 && fd != 2)
-        return (uint64_t)-(int64_t)EBADF;
     if (iovcnt <= 0 || iovcnt > 1024)
         return (uint64_t)-(int64_t)EINVAL;
     if (!access_ok(iov, (size_t)iovcnt * sizeof(struct iovec)))
@@ -491,8 +504,10 @@ static uint64_t sys_writev(syscall_frame_t *f) {
         if (!len) continue;
         if (!access_ok(base, len))
             return (uint64_t)-(int64_t)EFAULT;
-        kwrite(base, len);
-        total += len;
+        size_t  written = 0;
+        errno_t e = vfs_write(current_proc(), fd, base, len, &written);
+        if (e < 0) return total ? (uint64_t)total : (uint64_t)(int64_t)e;
+        total += written;
     }
     return (uint64_t)total;
 }
@@ -513,6 +528,163 @@ static uint64_t sys_getegid(syscall_frame_t *f) { (void)f; return 0; }
 static uint64_t sys_futex(syscall_frame_t *f) {
     (void)f;
     return (uint64_t)-(int64_t)ENOSYS;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_lseek (nr = 8)                                                   */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_lseek(syscall_frame_t *f) {
+    int     fd     = (int)(int32_t)f->rdi;
+    int64_t offset = (int64_t)f->rsi;
+    int     whence = (int)(int32_t)f->rdx;
+
+    int64_t new_pos = 0;
+    errno_t e = vfs_seek(current_proc(), fd, offset, whence, &new_pos);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return (uint64_t)new_pos;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_stat (nr = 4)                                                    */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_stat(syscall_frame_t *f) {
+    const char         *path = (const char *)(uintptr_t)f->rdi;
+    struct kernel_stat *st   = (struct kernel_stat *)(uintptr_t)f->rsi;
+
+    if (!path || !access_ok(path, 1))
+        return (uint64_t)-(int64_t)EFAULT;
+    if (!access_ok(st, sizeof(*st)))
+        return (uint64_t)-(int64_t)EFAULT;
+
+    vfs_stat_t vs;
+    errno_t e = vfs_stat(current_proc(), path, &vs);
+    if (e < 0) return (uint64_t)(int64_t)e;
+
+    __builtin_memset(st, 0, sizeof(*st));
+    st->st_ino     = vs.ino;
+    st->st_mode    = vs.mode;
+    st->st_nlink   = vs.nlink;
+    st->st_uid     = vs.uid;
+    st->st_gid     = vs.gid;
+    st->st_rdev    = vs.rdev;
+    st->st_size    = (int64_t)vs.size;
+    st->st_blksize = vs.blksize ? vs.blksize : PAGE_SIZE;
+    st->st_blocks  = vs.blocks;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_getdents64 (nr = 217)                                            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * linux_dirent64 layout (x86-64):
+ *   uint64_t d_ino      offset  0
+ *   int64_t  d_off      offset  8
+ *   uint16_t d_reclen   offset 16
+ *   uint8_t  d_type     offset 18
+ *   char     d_name[]   offset 19  (NUL-terminated; record padded to 8 bytes)
+ *
+ * d_type is derived from the inode mode: (mode & S_IFMT) >> 12 gives the
+ * DT_* value on Linux (DT_DIR=4, DT_REG=8, DT_CHR=2, DT_FIFO=1, etc.).
+ *
+ * Maximum record length: 19 + 255 (name) + 1 (NUL), padded to 8 = 280 bytes.
+ * We check for 280 bytes of headroom before reading each entry so that we
+ * never read an entry we cannot fit; avoids losing entries on buffer overflow.
+ */
+#define DIRENT64_FIXED  19u          /* bytes before d_name              */
+#define DIRENT64_MAXREC 280u         /* max record (255-char name + pad) */
+
+static uint64_t sys_getdents64(syscall_frame_t *f) {
+    int    fd    = (int)(int32_t)f->rdi;
+    void  *buf   = (void *)(uintptr_t)f->rsi;
+    size_t count = (size_t)f->rdx;
+
+    if (!buf || !access_ok(buf, count))
+        return (uint64_t)-(int64_t)EFAULT;
+    if (count < DIRENT64_MAXREC)
+        return (uint64_t)-(int64_t)EINVAL;
+
+    char     name[256];
+    uint64_t ino;
+    uint32_t mode;
+    size_t   total = 0;
+
+    while (count - total >= DIRENT64_MAXREC) {
+        /* Save position so we can rewind if the entry somehow overflows
+         * (shouldn't happen given the headroom check above). */
+        int64_t saved_pos = 0;
+        vfs_seek(current_proc(), fd, 0, SEEK_CUR, &saved_pos);
+        /* SEEK_CUR with offset=0 on a directory returns current index. */
+
+        errno_t e = vfs_readdir(current_proc(), fd, name, sizeof(name),
+                                &ino, &mode);
+        if (e == -ENOENT) break;   /* end of directory */
+        if (e < 0) return total ? (uint64_t)total : (uint64_t)(int64_t)e;
+
+        extern size_t strlen(const char *);
+        size_t namelen = strlen(name);
+        size_t reclen  = (DIRENT64_FIXED + namelen + 1u + 7u) & ~(size_t)7u;
+
+        if (total + reclen > count) {
+            /* Rewind to the entry we just consumed so the next call sees it. */
+            vfs_seek(current_proc(), fd, saved_pos, SEEK_SET, &saved_pos);
+            break;
+        }
+
+        uint8_t *p = (uint8_t *)buf + total;
+        __builtin_memset(p, 0, reclen);                   /* zero padding  */
+        *(uint64_t *)(p +  0) = ino;
+        *(int64_t  *)(p +  8) = (int64_t)(total + reclen);
+        *(uint16_t *)(p + 16) = (uint16_t)reclen;
+        *(uint8_t  *)(p + 18) = (uint8_t)((mode & S_IFMT) >> 12);
+        __builtin_memcpy(p + 19, name, namelen + 1);
+
+        total += reclen;
+    }
+
+    return (uint64_t)total;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_dup / sys_dup2 (nr = 32 / 33)                                   */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_dup(syscall_frame_t *f) {
+    int     oldfd  = (int)(int32_t)f->rdi;
+    int     newfd  = -1;
+    errno_t e      = vfs_dup(current_proc(), oldfd, &newfd);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return (uint64_t)(uint32_t)newfd;
+}
+
+static uint64_t sys_dup2(syscall_frame_t *f) {
+    int     oldfd = (int)(int32_t)f->rdi;
+    int     newfd = (int)(int32_t)f->rsi;
+    errno_t e     = vfs_dup2(current_proc(), oldfd, newfd);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return (uint64_t)(uint32_t)newfd;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_pipe (nr = 22)                                                   */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_pipe(syscall_frame_t *f) {
+    int *pipefd = (int *)(uintptr_t)f->rdi;
+
+    if (!access_ok(pipefd, 2 * sizeof(int)))
+        return (uint64_t)-(int64_t)EFAULT;
+
+    int     fds[2] = { -1, -1 };
+    errno_t e      = vfs_pipe(current_proc(), fds);
+    if (e < 0) return (uint64_t)(int64_t)e;
+
+    pipefd[0] = fds[0];
+    pipefd[1] = fds[1];
+    return 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -544,6 +716,357 @@ static uint64_t sys_prlimit64(syscall_frame_t *f) {
 }
 
 /* ------------------------------------------------------------------ */
+/* sys_readv (nr = 19)                                                  */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_readv(syscall_frame_t *f) {
+    int          fd     = (int)(int32_t)f->rdi;
+    struct iovec *iov   = (struct iovec *)(uintptr_t)f->rsi;
+    int          iovcnt = (int)(int32_t)f->rdx;
+
+    if (iovcnt <= 0 || iovcnt > 1024)
+        return (uint64_t)-(int64_t)EINVAL;
+    if (!access_ok(iov, (size_t)iovcnt * sizeof(struct iovec)))
+        return (uint64_t)-(int64_t)EFAULT;
+
+    size_t total = 0;
+    for (int i = 0; i < iovcnt; i++) {
+        char  *base = (char *)iov[i].iov_base;
+        size_t len  = iov[i].iov_len;
+        if (!len) continue;
+        if (!access_ok(base, len))
+            return (uint64_t)-(int64_t)EFAULT;
+        size_t  n = 0;
+        errno_t e = vfs_read(current_proc(), fd, base, len, &n);
+        if (e < 0) return total ? (uint64_t)total : (uint64_t)(int64_t)e;
+        total += n;
+        if (n < len) break;   /* short read / EOF */
+    }
+    return (uint64_t)total;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_pread64 / sys_pwrite64 (nr = 17 / 18)                          */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_pread64(syscall_frame_t *f) {
+    int     fd     = (int)(int32_t)f->rdi;
+    char   *buf    = (char *)(uintptr_t)f->rsi;
+    size_t  count  = (size_t)f->rdx;
+    int64_t offset = (int64_t)f->r10;
+
+    if (!count) return 0;
+    if (!access_ok(buf, count)) return (uint64_t)-(int64_t)EFAULT;
+    if (offset < 0) return (uint64_t)-(int64_t)EINVAL;
+
+    process_t *proc = current_proc();
+    int64_t saved = 0, dummy = 0;
+    vfs_seek(proc, fd, 0, SEEK_CUR, &saved);
+    errno_t e = vfs_seek(proc, fd, offset, SEEK_SET, &dummy);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    size_t n = 0;
+    e = vfs_read(proc, fd, buf, count, &n);
+    vfs_seek(proc, fd, saved, SEEK_SET, &dummy);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return (uint64_t)n;
+}
+
+static uint64_t sys_pwrite64(syscall_frame_t *f) {
+    int          fd     = (int)(int32_t)f->rdi;
+    const char  *buf    = (const char *)(uintptr_t)f->rsi;
+    size_t       count  = (size_t)f->rdx;
+    int64_t      offset = (int64_t)f->r10;
+
+    if (!count) return 0;
+    if (!access_ok(buf, count)) return (uint64_t)-(int64_t)EFAULT;
+    if (offset < 0) return (uint64_t)-(int64_t)EINVAL;
+
+    process_t *proc = current_proc();
+    int64_t saved = 0, dummy = 0;
+    vfs_seek(proc, fd, 0, SEEK_CUR, &saved);
+    errno_t e = vfs_seek(proc, fd, offset, SEEK_SET, &dummy);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    size_t n = 0;
+    e = vfs_write(proc, fd, buf, count, &n);
+    vfs_seek(proc, fd, saved, SEEK_SET, &dummy);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return (uint64_t)n;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_access (nr = 21)                                                 */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_access(syscall_frame_t *f) {
+    const char *path  = (const char *)(uintptr_t)f->rdi;
+    int         amode = (int)(int32_t)f->rsi;
+
+    if (!path || !access_ok(path, 1))
+        return (uint64_t)-(int64_t)EFAULT;
+
+    errno_t e = vfs_access(current_proc(), path, amode);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_fcntl (nr = 72)                                                  */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_fcntl(syscall_frame_t *f) {
+    int       fd  = (int)(int32_t)f->rdi;
+    int       cmd = (int)(int32_t)f->rsi;
+    uintptr_t arg = (uintptr_t)f->rdx;
+
+    int     result = 0;
+    errno_t e      = vfs_fcntl(current_proc(), fd, cmd, arg, &result);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return (uint64_t)(int64_t)result;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_truncate / sys_ftruncate (nr = 76 / 77)                         */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_truncate(syscall_frame_t *f) {
+    const char *path   = (const char *)(uintptr_t)f->rdi;
+    int64_t     length = (int64_t)f->rsi;
+
+    if (!path || !access_ok(path, 1))
+        return (uint64_t)-(int64_t)EFAULT;
+    if (length < 0) return (uint64_t)-(int64_t)EINVAL;
+
+    errno_t e = vfs_truncate(current_proc(), path, (uint64_t)length);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return 0;
+}
+
+static uint64_t sys_ftruncate(syscall_frame_t *f) {
+    int     fd     = (int)(int32_t)f->rdi;
+    int64_t length = (int64_t)f->rsi;
+
+    if (length < 0) return (uint64_t)-(int64_t)EINVAL;
+
+    errno_t e = vfs_ftruncate(current_proc(), fd, (uint64_t)length);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_rename (nr = 82)                                                 */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_rename(syscall_frame_t *f) {
+    const char *oldpath = (const char *)(uintptr_t)f->rdi;
+    const char *newpath = (const char *)(uintptr_t)f->rsi;
+
+    if (!oldpath || !access_ok(oldpath, 1)) return (uint64_t)-(int64_t)EFAULT;
+    if (!newpath || !access_ok(newpath, 1)) return (uint64_t)-(int64_t)EFAULT;
+
+    errno_t e = vfs_rename(current_proc(), oldpath, newpath);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_mkdir (nr = 83)                                                  */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_mkdir(syscall_frame_t *f) {
+    const char *path = (const char *)(uintptr_t)f->rdi;
+    uint32_t    mode = (uint32_t)f->rsi;
+
+    if (!path || !access_ok(path, 1))
+        return (uint64_t)-(int64_t)EFAULT;
+
+    errno_t e = vfs_mkdir(current_proc(), path, mode);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_rmdir (nr = 84)                                                  */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_rmdir(syscall_frame_t *f) {
+    const char *path = (const char *)(uintptr_t)f->rdi;
+
+    if (!path || !access_ok(path, 1))
+        return (uint64_t)-(int64_t)EFAULT;
+
+    errno_t e = vfs_rmdir(current_proc(), path);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_unlink (nr = 87)                                                 */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_unlink(syscall_frame_t *f) {
+    const char *path = (const char *)(uintptr_t)f->rdi;
+
+    if (!path || !access_ok(path, 1))
+        return (uint64_t)-(int64_t)EFAULT;
+
+    errno_t e = vfs_unlink(current_proc(), path);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_umask (nr = 95)                                                  */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_umask(syscall_frame_t *f) {
+    uint32_t   mask = (uint32_t)f->rdi & 0777u;
+    process_t *proc = current_proc();
+
+    bool irq = spinlock_acquire(&proc->lock);
+    uint32_t old = proc->umask;
+    proc->umask  = mask;
+    spinlock_release(&proc->lock, irq);
+
+    return (uint64_t)old;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_getcwd (nr = 79)                                                 */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_getcwd(syscall_frame_t *f) {
+    char  *buf  = (char *)(uintptr_t)f->rdi;
+    size_t size = (size_t)f->rsi;
+
+    if (!buf || !size) return (uint64_t)-(int64_t)EINVAL;
+    if (!access_ok(buf, size)) return (uint64_t)-(int64_t)EFAULT;
+
+    errno_t e = vfs_getcwd(current_proc(), buf, size);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return (uint64_t)(uintptr_t)buf;   /* Linux returns buf pointer on success */
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_chdir (nr = 80)                                                  */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_chdir(syscall_frame_t *f) {
+    const char *path = (const char *)(uintptr_t)f->rdi;
+
+    if (!path || !access_ok(path, 1))
+        return (uint64_t)-(int64_t)EFAULT;
+
+    errno_t e = vfs_chdir(current_proc(), path);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_fsync / sys_fdatasync / sys_sync (nr = 74 / 75 / 162)          */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_fsync(syscall_frame_t *f) {
+    (void)f;
+    return 0;   /* tmpfs is in-memory: always "synced" */
+}
+
+static uint64_t sys_sync(syscall_frame_t *f) {
+    (void)f;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_pipe2 (nr = 293)                                                 */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_pipe2(syscall_frame_t *f) {
+    int *pipefd = (int *)(uintptr_t)f->rdi;
+    int  flags  = (int)(int32_t)f->rsi;
+
+    if (!access_ok(pipefd, 2 * sizeof(int)))
+        return (uint64_t)-(int64_t)EFAULT;
+
+    int     fds[2] = { -1, -1 };
+    errno_t e      = vfs_pipe2(current_proc(), fds, flags);
+    if (e < 0) return (uint64_t)(int64_t)e;
+
+    pipefd[0] = fds[0];
+    pipefd[1] = fds[1];
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_dup3 (nr = 292)                                                  */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_dup3(syscall_frame_t *f) {
+    int     oldfd = (int)(int32_t)f->rdi;
+    int     newfd = (int)(int32_t)f->rsi;
+    int     flags = (int)(int32_t)f->rdx;
+    errno_t e     = vfs_dup3(current_proc(), oldfd, newfd, flags);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return (uint64_t)(uint32_t)newfd;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_openat (nr = 257)                                                */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_openat(syscall_frame_t *f) {
+    int         dirfd = (int)(int32_t)f->rdi;
+    const char *path  = (const char *)(uintptr_t)f->rsi;
+    int         flags = (int)(int32_t)f->rdx;
+    uint32_t    mode  = (uint32_t)f->r10;
+
+    if (!path || !access_ok(path, 1))
+        return (uint64_t)-(int64_t)EFAULT;
+
+    int fd = -1;
+    errno_t e = vfs_openat(current_proc(), dirfd, path, flags, mode, &fd);
+    if (e < 0) return (uint64_t)(int64_t)e;
+    return (uint64_t)(uint32_t)fd;
+}
+
+/* ------------------------------------------------------------------ */
+/* sys_newfstatat (nr = 262)                                            */
+/* ------------------------------------------------------------------ */
+
+static uint64_t sys_newfstatat(syscall_frame_t *f) {
+    int                 dirfd   = (int)(int32_t)f->rdi;
+    const char         *path    = (const char *)(uintptr_t)f->rsi;
+    struct kernel_stat *statbuf = (struct kernel_stat *)(uintptr_t)f->rdx;
+    int                 flags   = (int)(int32_t)f->r10;
+
+    if (!access_ok(statbuf, sizeof(*statbuf)))
+        return (uint64_t)-(int64_t)EFAULT;
+
+    vfs_stat_t vs;
+    errno_t    e;
+
+    if ((flags & AT_EMPTY_PATH) && path && path[0] == '\0') {
+        /* fstat the dirfd itself */
+        e = vfs_fstat(current_proc(), dirfd, &vs);
+    } else {
+        if (!path || !access_ok(path, 1))
+            return (uint64_t)-(int64_t)EFAULT;
+        e = vfs_statat(current_proc(), dirfd, path, flags, &vs);
+    }
+    if (e < 0) return (uint64_t)(int64_t)e;
+
+    __builtin_memset(statbuf, 0, sizeof(*statbuf));
+    statbuf->st_ino     = vs.ino;
+    statbuf->st_mode    = vs.mode;
+    statbuf->st_nlink   = vs.nlink;
+    statbuf->st_uid     = vs.uid;
+    statbuf->st_gid     = vs.gid;
+    statbuf->st_rdev    = vs.rdev;
+    statbuf->st_size    = (int64_t)vs.size;
+    statbuf->st_blksize = vs.blksize ? vs.blksize : PAGE_SIZE;
+    statbuf->st_blocks  = vs.blocks;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
 /* Registration                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -552,7 +1075,9 @@ void syscalls_init(void) {
     syscall_register(1,   sys_write);
     syscall_register(2,   sys_open);
     syscall_register(3,   sys_close);
+    syscall_register(4,   sys_stat);
     syscall_register(5,   sys_fstat);
+    syscall_register(8,   sys_lseek);
     syscall_register(9,   sys_mmap);
     syscall_register(10,  sys_mprotect);
     syscall_register(11,  sys_munmap);
@@ -560,20 +1085,45 @@ void syscalls_init(void) {
     syscall_register(13,  sys_rt_sigaction);
     syscall_register(14,  sys_rt_sigprocmask);
     syscall_register(16,  sys_ioctl);
+    syscall_register(17,  sys_pread64);
+    syscall_register(18,  sys_pwrite64);
+    syscall_register(19,  sys_readv);
     syscall_register(20,  sys_writev);
+    syscall_register(21,  sys_access);
+    syscall_register(22,  sys_pipe);
+    syscall_register(32,  sys_dup);
+    syscall_register(33,  sys_dup2);
     syscall_register(39,  sys_getpid);
     syscall_register(60,  sys_exit);
     syscall_register(63,  sys_uname);
+    syscall_register(72,  sys_fcntl);
+    syscall_register(74,  sys_fsync);
+    syscall_register(75,  sys_fsync);    /* fdatasync: same no-op */
+    syscall_register(76,  sys_truncate);
+    syscall_register(77,  sys_ftruncate);
+    syscall_register(79,  sys_getcwd);
+    syscall_register(80,  sys_chdir);
+    syscall_register(82,  sys_rename);
+    syscall_register(83,  sys_mkdir);
+    syscall_register(84,  sys_rmdir);
+    syscall_register(87,  sys_unlink);
+    syscall_register(95,  sys_umask);
     syscall_register(102, sys_getuid);
     syscall_register(104, sys_getgid);
     syscall_register(107, sys_geteuid);
     syscall_register(108, sys_getegid);
     syscall_register(110, sys_getppid);
     syscall_register(158, sys_arch_prctl);
+    syscall_register(162, sys_sync);
     syscall_register(186, sys_gettid);
     syscall_register(202, sys_futex);
+    syscall_register(217, sys_getdents64);
     syscall_register(218, sys_set_tid_address);
     syscall_register(228, sys_clock_gettime);
     syscall_register(231, sys_exit);
+    syscall_register(257, sys_openat);
+    syscall_register(262, sys_newfstatat);
+    syscall_register(292, sys_dup3);
+    syscall_register(293, sys_pipe2);
     syscall_register(302, sys_prlimit64);
 }

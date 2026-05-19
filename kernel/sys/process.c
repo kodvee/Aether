@@ -23,6 +23,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <kernel/scheduler.h>
+#include <kernel/vfs.h>
 #include <kernel/mmu.h>
 #include <kernel/panic.h>
 #include <kernel/cpu.h>
@@ -78,6 +79,11 @@ process_t *process_create(const char *name) {
     list_head_init(&proc->vma_list);
     proc->mmap_base    = MMAP_BASE;
     proc->brk          = 0;
+    proc->cwd_path[0]  = '/';
+    proc->cwd_path[1]  = '\0';
+    proc->cwd          = NULL;
+    proc->umask        = 0022u;
+    fd_table_init(&proc->fd_table);
 
     return proc;
 }
@@ -92,6 +98,8 @@ void process_destroy(process_t *proc) {
         process_munmap(proc, vma->base, vma->length);
     }
 
+    fd_table_destroy(&proc->fd_table);
+    if (proc->cwd) { inode_unref(proc->cwd); proc->cwd = NULL; }
     /* page-table pages are not freed: vmm_free_pagemap is not yet implemented */
     free(proc);
 }

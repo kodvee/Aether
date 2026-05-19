@@ -81,7 +81,7 @@ Subsystems are layered. Higher layers may depend on lower layers; lower layers m
         |
 [ VFS / Drivers ]                      <- in progress
         |
-[ Userspace ]                          <- ELF init process running; no VFS yet
+[ Userspace ]                          <- ELF init process running; VFS + devfs live
 ```
 
 ---
@@ -328,8 +328,8 @@ Milestones are listed in dependency order. Each milestone should produce a clean
 | 1 | **Scheduler and kernel threading** | Done | Preemptive SMP scheduler, per-core run queues, kernel thread lifecycle, context switch |
 | 2 | **Process abstraction** | Done | Process struct, VMA-based address space, demand paging, mmap/munmap/mprotect, process lifecycle |
 | 3 | **Syscall ABI** | Done | SYSCALL/SYSRET dispatch, user/kernel boundary, argument validation, 28 syscalls (musl-compatible surface) |
-| 4 | **Virtual filesystem** | In progress | VFS layer, file descriptor table, `open`/`read`/`write`/`close`, `stat`, directory traversal |
-| 5 | **Initial userspace** | Partial | ELF loader done, init process running; no VFS yet, no `exec` |
+| 4 | **Virtual filesystem** | In progress (Stage 2 done) | VFS layer, fd table, `open`/`read`/`write`/`close`/`stat`/`ioctl`; tmpfs at `/`; devfs at `/dev` (`null`, `zero`, `tty`); stdin/stdout/stderr wired |
+| 5 | **Initial userspace** | Partial | ELF loader done, init process running; VFS + devfs live, no `exec` |
 | 6 | **Device and driver framework** | Not started | Driver registration model, character device interface, `/dev` integration |
 | 7 | **IPC and synchronization** | Not started | Pipes, signals, futex-like primitives, shared memory |
 | 8 | **Networking** | Not started | Network stack, socket interface, TCP/IP |
@@ -359,7 +359,7 @@ Milestones are listed in dependency order. Each milestone should produce a clean
 | Process model | Stable | VMA management, demand paging, mmap/munmap/mprotect |
 | Syscall ABI | Stable | SYSCALL/SYSRET, 28 syscalls (read, write, mmap, brk, fstat, writev, futex, rt_sigaction, uid/gid, ...) |
 | ELF loader | Stable | Static ELF64, init user process spawned at boot |
-| VFS | Not started | - |
+| VFS | In progress | Stage 2 done: inode/file/fd abstraction, tmpfs, devfs (null/zero/tty), syscalls wired |
 | Drivers | Not started | - |
 
 ---

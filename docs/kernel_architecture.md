@@ -59,7 +59,9 @@ The design philosophy and long-term goals live in [README.md](../README.md); thi
 | Process model | `sys/process.c` | Stable | `<kernel/scheduler.h>` |
 | Syscall ABI | `sys/syscall.c`, `sys/syscalls.c` | Stable | `<kernel/syscall.h>` |
 | ELF loader | `sys/elf_loader.c` | Stable | `<kernel/elf_loader.h>` |
-| VFS | - | **Not implemented** | - |
+| VFS core | `fs/vfs.c` | In progress | `<kernel/vfs.h>` |
+| tmpfs | `fs/tmpfs.c` | In progress | `<kernel/vfs.h>` |
+| devfs | `fs/devfs.c` | In progress | `<kernel/vfs.h>` |
 
 ---
 
@@ -469,8 +471,11 @@ process_t.lock
     -> wait_queue_t.lock   \  (same level; never both held simultaneously)
     -> dead_list_lock      /
       -> run_queue_lock
-        -> slab cache lock
-          -> pmm_lock
+        -> inode_t.lock     \  (per-inode; acquired after releasing process lock)
+        -> file_t.lock      /  (per-file; acquired after releasing process lock)
+          -> slab cache lock
+            -> pmm_lock
+mount_lock  (independent; never held with any of the above)
 ```
 
 Rules:
@@ -480,6 +485,8 @@ Rules:
 4. **run_queue_lock is innermost among scheduler locks:** No other scheduler lock may be acquired while `run_queue_lock` is held.
 5. **PMM lock > VMM (no VMM lock):** VMM calls PMM internally; PMM never calls VMM.
 6. **Per-cache slab locks are independent:** no nested slab lock acquisition.
+7. **VFS I/O pattern:** acquire process_t.lock to look up and ref-count the file_t, release process_t.lock, then perform I/O (may acquire inode/file lock). Never hold process_t.lock during I/O.
+8. **mount_lock** is only held to read/write the mount table. It is never held while calling into filesystem code.
 
 ---
 
@@ -927,7 +934,7 @@ The following subsystems and features are explicitly absent from the current cod
 
 | Feature | Notes |
 |---------|-------|
-| VFS / file descriptors | Blocks: open, read, fstat, dynamic linking -- design planned, implementation next |
+| VFS — Stage 3+ | Remaining: `stat` syscall on paths, `getdents`, `pipe`, `dup`/`dup2`, ext2/disk-backed fs |
 | Signal delivery | Blocks: kill, sigaction, POSIX process control |
 | `fork` / `exec` | Blocks: shell, conventional process lifecycle |
 | Dynamic ELF loading | Requires PT_INTERP support and dynamic linker; only static binaries work today |

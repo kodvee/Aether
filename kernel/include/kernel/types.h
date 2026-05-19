@@ -51,6 +51,21 @@ typedef int errno_t;
 #define EDEADLK 35   /* resource deadlock would occur                      */
 #define ENOTTY  25   /* inappropriate ioctl for device                     */
 #define ENOTSUP 95   /* operation not supported                            */
+#define EEXIST  17   /* file exists                                        */
+#define ENOTDIR 20   /* not a directory                                    */
+#define EISDIR  21   /* is a directory                                     */
+#define EMFILE  24   /* too many open files                                */
+#define ENOSPC  28   /* no space left on device                            */
+#define EROFS   30   /* read-only filesystem                               */
+#define ENAMETOOLONG 36  /* filename too long                              */
+#define ENOTEMPTY    39  /* directory not empty                            */
+#define EOVERFLOW    75  /* value too large                                */
+#define EPIPE        32  /* broken pipe                                    */
+#define ERANGE       34  /* result too large                               */
+
+/* -- Path limit -------------------------------------------------------- */
+
+#define PATH_MAX 512   /* maximum absolute path length including NUL      */
 
 /* -- IRQ state --------------------------------------------------------- */
 

@@ -16,6 +16,7 @@
 
 #include <kernel/elf_loader.h>
 #include <kernel/scheduler.h>
+#include <kernel/vfs.h>
 #include <kernel/vmm.h>
 #include <kernel/pmm.h>
 #include <kernel/mmu.h>
@@ -171,6 +172,9 @@ struct thread *elf_load_user(const void *elf_data, size_t elf_size,
      *   [rsp + 40..56] padding
      */
     uintptr_t usp = process_alloc_ustack(proc) - 64;
+
+    /* Install fds 0/1/2 pointing to /dev/tty before the process runs */
+    vfs_setup_std_fds(proc);
 
     thread_t *t = thread_create_user(proc, hdr->e_entry, usp);
     if (!t) {

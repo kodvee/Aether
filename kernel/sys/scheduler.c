@@ -240,7 +240,7 @@ void __attribute__((noreturn)) scheduler_enter(void) {
         cpu->current_thread = idle;
         cpu->tss.rsp0       = idle->kstack_top;
         cpu->syscall_ksp    = idle->kstack_top;
-        spinlock_release(&cpu->run_queue_lock, irq);
+        spinlock_release(&cpu->run_queue_lock, false); /* keep IRQs off until trampoline sti */
 
         context_enter(&idle->context);
         __builtin_unreachable();
@@ -252,7 +252,7 @@ void __attribute__((noreturn)) scheduler_enter(void) {
     cpu->tss.rsp0       = first->kstack_top;
     cpu->syscall_ksp    = first->kstack_top;
 
-    spinlock_release(&cpu->run_queue_lock, irq);
+    spinlock_release(&cpu->run_queue_lock, false); /* keep IRQs off until trampoline sti */
 
     context_enter(&first->context);
     __builtin_unreachable();
@@ -302,13 +302,13 @@ void schedule(void) {
     cpu->tss.rsp0       = next->kstack_top;   /* ring-3 -> ring-0 stack */
     cpu->syscall_ksp    = next->kstack_top;
 
-    spinlock_release(&cpu->run_queue_lock, irq);
+    spinlock_release(&cpu->run_queue_lock, false); /* keep IRQs off across context switch */
 
     if (current != NULL) {
         context_switch(&current->context, &next->context);
-        /* Resumes here when this thread is scheduled back in */
+        irq_restore(irq); /* restore caller's IRQ state when this thread resumes */
     } else {
-        context_enter(&next->context);
+        context_enter(&next->context); /* noreturn; trampoline does sti */
     }
 }
 
