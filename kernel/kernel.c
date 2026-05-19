@@ -7,14 +7,15 @@
 #include <kernel/cpu.h>
 #include <kernel/ports.h>
 #include <kernel/cpufeature.h>
+#include <kernel/mmu.h>
 #include <stdbool.h>
 #include <kernel/hpet.h>
 #include <kernel/apic.h>
 
 extern void debug_printf_init(void);
 extern void gdt_init(void);
-extern void mmu_init(void);
-extern void slab_init(void);
+extern void pmm_init(void);
+extern void vmm_init(void);
 extern void idt_init(void);
 extern void symbols_init(void);
 extern void printf_init(void);
@@ -51,12 +52,15 @@ static core_t* core_bsp = NULL;
  * when a kinit thread is started which finished the initialization
 */
 void _start(void) {
-	/* Initialize memory */
-    mmu_init();
+	/* Initialize physical memory manager */
+    pmm_init();
+
+	/* Initialize virtual memory manager */
+	vmm_init();
 
 	/* Initialize gdt */
 	gdt_init();
-	
+
 	/* Setup isrs */
     idt_init();
 

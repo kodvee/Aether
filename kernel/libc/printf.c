@@ -101,13 +101,14 @@ void kprintf(const char* fmt, ...) {
 
 	int length = vsnprintf(buffer, 1024, fmt, args);
 	va_end(args);
-	flanterm_write(context, buffer, length);
 
-#ifdef SERIAL_LOG
-	for(int i = 0; i <= length; i++) {
+	/* Framebuffer: only once flanterm is initialised */
+	if (context)
+		flanterm_write(context, buffer, length);
+
+	/* Serial: always — visible via QEMU -serial stdio from the very first kprintf */
+	for (int i = 0; i < length; i++)
 		outportb(COM1, buffer[i]);
-	}
-#endif
 
 	spinlock_release(&printlock, int_state);
 }
