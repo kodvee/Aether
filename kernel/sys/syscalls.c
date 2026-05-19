@@ -43,8 +43,8 @@
  *   3. The entire range is below the user/kernel boundary.
  *
  * This is a necessary but not sufficient check -- it does not verify that
- * every page in the range is actually mapped.  That will be added once we
- * have a reliable "walk the VMA list" helper.
+ * every page in the range is backed by a VMA.  A full check would walk
+ * proc->vma_list (available via process_ensure_page) but is not yet done.
  */
 #define USER_ADDR_MAX  ((uintptr_t)0x0000800000000000ULL)
 

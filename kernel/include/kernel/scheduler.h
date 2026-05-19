@@ -4,11 +4,10 @@
 struct regs;
 
 /*
- * scheduler.h - execution context and scheduling foundation
+ * scheduler.h - execution context, scheduling data model, and full API
  *
- * This header defines the structures that the scheduler will operate on.
- * It does NOT implement scheduling logic; it establishes the data model
- * that the scheduler implementation will consume.
+ * This header defines the structures and API for the preemptive SMP
+ * round-robin scheduler implemented in sys/scheduler.c.
  *
  * -----------------------------------------------------------------------
  * Design contract
@@ -30,12 +29,9 @@ struct regs;
  * What is NOT here yet
  * -----------------------------------------------------------------------
  *
- * - Scheduler algorithm (run queue policy, preemption logic)
- * - Context switch assembly stub
- * - Thread creation / teardown API
- * - Process creation / teardown API
  * - Signal delivery
- * - User-mode address space management beyond the pagemap pointer
+ * - fork / exec
+ * - VFS / file descriptor table
  *
  * -----------------------------------------------------------------------
  * Concurrency rules
@@ -78,7 +74,7 @@ struct regs;
  * THREAD_READY:   on a run queue, eligible to be scheduled.
  * THREAD_RUNNING: currently executing on a CPU.
  * THREAD_BLOCKED: waiting on a resource; on a wait queue, not a run queue.
- * THREAD_DEAD:    finished; resources not yet reclaimed.
+ * THREAD_DEAD:    finished; pending reclaim by the reaper thread.
  */
 typedef enum {
     THREAD_CREATED = 0,
@@ -97,9 +93,9 @@ typedef enum {
  * switch.  Only callee-saved registers need to be preserved; the C ABI
  * guarantees all other registers are caller-saved.
  *
- * The context switch stub (to be implemented in asm) will:
- *   1. Save rip, rsp, rbx, rbp, r12-r15 of the outgoing thread here.
- *   2. Load the same fields from the incoming thread's context_regs_t.
+ * The context switch stub (sys/switch.S: context_switch / context_enter):
+ *   1. Saves rip, rsp, rbx, rbp, r12-r15 of the outgoing thread here.
+ *   2. Loads the same fields from the incoming thread's context_regs_t.
  *
  * rip is the address to return to after the switch (the instruction
  * after the switch call, or the thread entry point for a new thread).
@@ -393,8 +389,8 @@ void schedule(void);
  * and switches to the next available thread.  If no thread is available,
  * the core enters an idle halt loop.  Does NOT return.
  *
- * Memory for the thread_t and its kernel stack is NOT freed here; a
- * reaper mechanism (not yet implemented) is responsible for cleanup.
+ * Memory for the thread_t and its kernel stack is NOT freed here; the
+ * global reaper thread drains dead_list and frees them asynchronously.
  */
 void thread_exit(void) __attribute__((noreturn));
 

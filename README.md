@@ -77,11 +77,11 @@ Subsystems are layered. Higher layers may depend on lower layers; lower layers m
         |
 [ ELF / Panic / Logging / ktest ]
         |
-[ Scheduler / Process model ]
+[ Scheduler / Process model / Syscall ABI / ELF loader ]
         |
-[ VFS / Syscall ABI / Drivers ]        <- not yet implemented
+[ VFS / Drivers ]                      <- in progress
         |
-[ Userspace ]                          <- not yet implemented
+[ Userspace ]                          <- ELF init process running; no VFS yet
 ```
 
 ---
@@ -327,8 +327,8 @@ Milestones are listed in dependency order. Each milestone should produce a clean
 |---|-----------|--------|-----------------|
 | 1 | **Scheduler and kernel threading** | Done | Preemptive SMP scheduler, per-core run queues, kernel thread lifecycle, context switch |
 | 2 | **Process abstraction** | Done | Process struct, VMA-based address space, demand paging, mmap/munmap/mprotect, process lifecycle |
-| 3 | **Syscall ABI** | Done (partial) | SYSCALL/SYSRET dispatch, user/kernel boundary, argument validation, 16 syscalls |
-| 4 | **Virtual filesystem** | Not started | VFS layer, file descriptor table, `open`/`read`/`write`/`close`, `stat`, directory traversal |
+| 3 | **Syscall ABI** | Done | SYSCALL/SYSRET dispatch, user/kernel boundary, argument validation, 28 syscalls (musl-compatible surface) |
+| 4 | **Virtual filesystem** | In progress | VFS layer, file descriptor table, `open`/`read`/`write`/`close`, `stat`, directory traversal |
 | 5 | **Initial userspace** | Partial | ELF loader done, init process running; no VFS yet, no `exec` |
 | 6 | **Device and driver framework** | Not started | Driver registration model, character device interface, `/dev` integration |
 | 7 | **IPC and synchronization** | Not started | Pipes, signals, futex-like primitives, shared memory |
@@ -345,7 +345,7 @@ Milestones are listed in dependency order. Each milestone should produce a clean
 | Physical memory manager (PMM) | Stable | Bitmap allocator, contiguous frame support |
 | Virtual memory manager (VMM) | Stable | Kernel page tables, HHDM, user pagemaps |
 | Slab allocator | Stable | Fixed-size caches, large-object fallthrough |
-| GDT | Stable | No TSS per core yet |
+| GDT | Stable | Per-core GDT + TSS; rsp0 updated on every context switch |
 | IDT / ISR dispatch | Stable | Dynamic IRQ allocation (vectors 32-254), SMP halt vector |
 | LAPIC / IOAPIC | Stable | Timer, IPI, SMP bringup |
 | HPET | Stable | Used for LAPIC calibration |
@@ -354,10 +354,10 @@ Milestones are listed in dependency order. Each milestone should produce a clean
 | ELF symbol resolution | Stable | O(log n) address lookup, section traversal |
 | Panic subsystem | Stable | Full diagnostics, SMP freeze, depth gating |
 | Structured logging | Stable | `klog` with severity levels |
-| Test framework (ktest) | Stable | 66 tests, CI-ready QEMU exit code |
+| Test framework (ktest) | Stable | 186 tests across 10 subsystems, CI-ready QEMU exit code |
 | Scheduler | Stable | Round-robin SMP, thread_block, idle threads, reaper |
 | Process model | Stable | VMA management, demand paging, mmap/munmap/mprotect |
-| Syscall ABI | Stable | SYSCALL/SYSRET, 16 syscalls (write, mmap, brk, arch_prctl, ...) |
+| Syscall ABI | Stable | SYSCALL/SYSRET, 28 syscalls (read, write, mmap, brk, fstat, writev, futex, rt_sigaction, uid/gid, ...) |
 | ELF loader | Stable | Static ELF64, init user process spawned at boot |
 | VFS | Not started | - |
 | Drivers | Not started | - |

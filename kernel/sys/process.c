@@ -92,7 +92,7 @@ void process_destroy(process_t *proc) {
         process_munmap(proc, vma->base, vma->length);
     }
 
-    /* TODO: free page-table pages (vmm_free_pagemap not yet implemented) */
+    /* page-table pages are not freed: vmm_free_pagemap is not yet implemented */
     free(proc);
 }
 

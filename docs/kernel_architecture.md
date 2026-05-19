@@ -41,7 +41,7 @@ The design philosophy and long-term goals live in [README.md](../README.md); thi
 | Spinlock | `lib/spinlock.c` | Stable | `<kernel/spinlock.h>` |
 | Intrusive list | `include/kernel/list.h` | Stable | `<kernel/list.h>` |
 | Allocating list | `lib/dlist.c` | Stable | `<kernel/dlist.h>` |
-| GDT | `sys/gdt.c` | Stable (no TSS yet) | `<kernel/gdt.h>` |
+| GDT | `sys/gdt.c` | Stable | `<kernel/gdt.h>` |
 | IDT / ISR dispatch | `sys/idt.c` + `sys/int.S` | Stable | `<kernel/int.h>` |
 | CPU feature detection | `sys/cpu.c` | Stable | `<kernel/cpufeature.h>` |
 | Per-CPU infrastructure | `include/kernel/cpu.h` | Stable | `<kernel/cpu.h>` |
@@ -686,7 +686,7 @@ The idle thread is created by `scheduler_init()` for every core. It is not freed
 
 A single global reaper thread drains `dead_list` (threads that have called `thread_exit()`), freeing their kernel stacks and `thread_t` allocations. It calls `thread_block(&reaper_wq)` when the list is empty, and is woken by `thread_exit()` via `wait_queue_wake_one(&reaper_wq)`.
 
-The reaper is created and enqueued by `scheduler_init()` on core 0. It floats to whichever core wakes it.
+The reaper thread is created by `scheduler_init()` but not enqueued until `scheduler_start_reaper()` is called (after all other per-core queues are populated, so the queues appear empty at test time). It runs on core 0 initially and floats to whichever core wakes it thereafter.
 
 ### 12.8 Kernel Stack
 
@@ -824,7 +824,7 @@ KT_EXPECT_PANIC_VERIFY(ctx);
 
 **CI integration:** The test runner writes a result code to QEMU's `isa-debug-exit` device (exit code 1 = all passed).
 
-**Currently registered tests:** 31 tests across `memory`, `smp`, `panic`, `spinlock`, and `elf` subsystems.
+**Currently registered tests:** 186 tests across `memory`, `slab`, `vmm`, `list`, `dlist`, `process`, `cpu`, `hpet`, `types`, `smp`, `panic`, `spinlock`, `scheduler`, and `elf` subsystems.
 
 ---
 
@@ -870,8 +870,8 @@ Reading another CPU's `current_thread` is permitted lock-free for approximate ch
 **1. Allocations have exactly one owner.**  
 When ownership is transferred across a function boundary, the transfer is explicit: document it at the call site or in the header contract.
 
-**2. Shared objects use reference counting** (future).  
-Objects accessible from multiple contexts with non-trivial lifetimes must use reference counting. The infrastructure for this does not yet exist; it must be added before the process model is implemented.
+**2. Shared objects use reference counting.**  
+Objects accessible from multiple contexts with non-trivial lifetimes must use reference counting. The process model is implemented; VFS file descriptors and inodes will be the first consumers of a formal refcount API.
 
 **3. No hidden allocations.**  
 A function that allocates memory internally and returns a pointer without documenting it in its interface creates implicit ownership. The kernel currently has several violations of this rule in ACPI (populating global lists without documented cleanup paths). These are acceptable at init time but the pattern must not spread to runtime paths.
@@ -883,7 +883,7 @@ Even if cleanup is never called in practice, it must be designed. Exceptions: al
 After `clean_reclaimable_memory()`, Limine pages (bootloader data, ACPI tables in reclaimable regions) are invalid. Data needed beyond that point must be copied to the heap before reclaim. `elf_init()` does this correctly for the kernel ELF image.
 
 **6. Kernel stack ownership.**  
-A `thread_t` owns its `kstack_top` allocation. `thread_destroy()` (not yet implemented) must call `kstack_free(thread->kstack_top)` before freeing the `thread_t`.
+A `thread_t` owns its `kstack_top` allocation. The reaper thread calls `kstack_free(t->kstack_top)` then `free(t)` for every thread that reaches `THREAD_DEAD`.
 
 ---
 
@@ -916,7 +916,7 @@ All prerequisites for the base scheduler are met. The scheduler is implemented a
 | `thread_exit()` + reaper | done | `sys/scheduler.c` |
 | Per-core idle thread | done | `sys/scheduler.c` |
 | Preemption via LAPIC tick hook | done | `lapic_set_tick_hook(schedule)` in `kernel.c` |
-| TSS per core in GDT | missing | Required for ring-3 privilege transitions |
+| TSS per core in GDT | done | `sys/gdt.c`; `tss.rsp0` updated by `schedule()` and `scheduler_enter()` |
 | `interrupt_depth` incremented in ISR stubs | missing | Needed for "in interrupt context?" assertion |
 
 ---
@@ -927,20 +927,18 @@ The following subsystems and features are explicitly absent from the current cod
 
 | Feature | Notes |
 |---------|-------|
-| TSS per core | Required for correct kernel-stack switch on ring-3 interrupts/faults |
-| VFS / file descriptors | Blocks: open, read, fstat, dynamic linking |
+| VFS / file descriptors | Blocks: open, read, fstat, dynamic linking -- design planned, implementation next |
 | Signal delivery | Blocks: kill, sigaction, POSIX process control |
 | `fork` / `exec` | Blocks: shell, conventional process lifecycle |
 | Dynamic ELF loading | Requires PT_INTERP support and dynamic linker; only static binaries work today |
-| Monotonic clock API | HPET counter exposed via clock_gettime; no wall-clock RTC sync |
+| Monotonic clock API | HPET counter readable; no clock_gettime syscall wired yet |
 | `kprintf` re-entrancy / locking | Currently unsafe in interrupt context |
 | Guard pages on kernel stacks | Needs VMM support for intentionally unmapped pages |
-| Reference counting | Needed before shared object lifetimes become non-trivial |
 | Mutex / semaphore | thread_block() exists -- the sleeping-lock API can now be built on top |
 | Per-thread CPU time accounting | Tick hook exists -- needs a per-thread counter in thread_t |
 | SMP load balancing | Scheduler exists -- needs work-stealing or push policy |
 | MLFQ / CFS scheduling | Round-robin is sufficient until user-process workloads justify it |
 | `interrupt_depth` tracking | Field exists in core_t but ISR stubs do not increment it |
-| Drivers | Driver model not designed |
+| Drivers | Driver model not designed; will follow VFS |
 | Networking | Not designed |
-| IPC | Not designed |
+| IPC (pipes, sockets) | Not designed; pipes will follow VFS |
