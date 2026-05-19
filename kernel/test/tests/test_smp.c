@@ -34,7 +34,7 @@ KTEST("smp-core-count", "smp",
 /* ------------------------------------------------------------------ */
 
 static void test_smp_irq_array(ktest_ctx_t *ctx) {
-    /* vector 32 is the LAPIC timer — check it is installed */
+    /* vector 32 is the LAPIC timer - check it is installed */
     KT_CHECK(irq_get(32) != NULL);
 
     /* High-numbered vectors (well above any system handler) must be NULL */

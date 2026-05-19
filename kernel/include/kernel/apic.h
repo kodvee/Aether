@@ -40,3 +40,17 @@ void lapic_timer_calibrate(uint64_t ns);
 void lapic_issue_ipi(uint16_t core, uint8_t vector, uint8_t shorthand, uint8_t delivery);
 uint32_t lapic_get_current_count();
 uint64_t lapic_get_frequency();
+
+/*
+ * lapic_set_tick_hook - install a callback invoked on every LAPIC timer tick.
+ *
+ * The hook is called from lapic_irq_handler after EOI is sent.  It runs
+ * in interrupt context with interrupts disabled; the hook must not block.
+ * Pass NULL to remove the hook.
+ *
+ * This is the correct inversion-of-control point for the scheduler: the
+ * LAPIC layer does not depend on the scheduler, but the scheduler installs
+ * itself here via scheduler_init().
+ */
+typedef void (*lapic_tick_hook_t)(void);
+void lapic_set_tick_hook(lapic_tick_hook_t hook);

@@ -109,7 +109,7 @@ uintptr_t mmu_request_frames(uint64_t num) {
  * mmu_free_frames - release pages frames back to the pool.
  * addr is the PHYSICAL base address; pages is the count.
  * Operates under a single lock acquisition to avoid the nested-lock
- * deadlock the old implementation had (mmu_free_frames → mmu_frame_clear
+ * deadlock the old implementation had (mmu_free_frames -> mmu_frame_clear
  * both acquired mmu_lock).
  */
 void mmu_free_frames(void *addr, uint64_t pages) {
@@ -150,7 +150,7 @@ void __init pmm_init(void) {
     if (!hhdm_request.response) SUBSYS_PANIC("pmm", "No HHDM response from bootloader");
     hhdm_offset = hhdm_request.response->offset;
 
-    /* Highest address of usable RAM — skip reserved/device regions so the
+    /* Highest address of usable RAM - skip reserved/device regions so the
      * bitmap covers only actual RAM and not huge PCIe/MMIO holes. */
     uint64_t top = 0;
     for (uint64_t i = 0; i < resp->entry_count; i++) {

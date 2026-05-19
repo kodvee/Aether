@@ -89,7 +89,7 @@ void __init vmm_init(void) {
     __builtin_memset(mmu_kernel_pagemap, 0, PAGE_SIZE);
 
     /* Map RAM and bootloader-managed regions into HHDM.
-     * Skip BAD_MEMORY entirely. Skip RESERVED entries larger than 512 MiB —
+     * Skip BAD_MEMORY entirely. Skip RESERVED entries larger than 512 MiB -
      * those are typically large 64-bit MMIO holes; small RESERVED regions
      * (BIOS area, ACPI tables, etc.) must be mapped so the kernel can read
      * them after switching to its own page tables. */

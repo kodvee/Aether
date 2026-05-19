@@ -1,14 +1,64 @@
 #pragma once
 
-#include <limits.h>
+/*
+ * types.h - canonical kernel-wide type definitions
+ *
+ * All subsystems must use these types when working with identifiers,
+ * addresses, or error codes so that physical vs virtual and kernel vs
+ * userspace distinctions are explicit at the type level.
+ *
+ * Rule: never silently coerce between paddr_t and vaddr_t.
+ *       never return a negative paddr_t.
+ *       use errno_t for error returns, not raw int.
+ */
+
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
-#define asm __asm__
-#define volatile __volatile__
+/* -- Identity types ---------------------------------------------------- */
 
-#define ALIGN (sizeof(size_t))
+typedef int32_t  pid_t;     /* process identifier; -1 = invalid            */
+typedef int32_t  tid_t;     /* thread identifier;  -1 = invalid            */
+typedef uint32_t cpu_id_t;  /* LAPIC / logical CPU identifier              */
 
-#define ONES ((size_t)-1/UCHAR_MAX)
-#define HIGHS (ONES * (UCHAR_MAX/2+1))
-#define HASZERO(X) (((X)-ONES) & ~(X) & HIGHS)
+/* -- Address types ----------------------------------------------------- */
+
+typedef uintptr_t vaddr_t;  /* kernel or user virtual address              */
+typedef uintptr_t paddr_t;  /* physical frame address (never add HHDM)     */
+
+/* -- Error type -------------------------------------------------------- */
+
+/*
+ * errno_t: signed return value convention.
+ *   0        = success
+ *   negative = -(POSIX errno), e.g. -ENOMEM
+ *   positive = subsystem-defined success value
+ */
+typedef int errno_t;
+
+#define EOK      0   /* success                                            */
+#define EPERM    1   /* operation not permitted                            */
+#define ENOENT   2   /* no such file or directory                          */
+#define ESRCH    3   /* no such process                                    */
+#define EINTR    4   /* interrupted system call                            */
+#define EFAULT  14   /* bad address                                        */
+#define EBUSY   16   /* device or resource busy                            */
+#define EINVAL  22   /* invalid argument                                   */
+#define ENOMEM  12   /* out of memory                                      */
+#define ENOSYS  38   /* function not implemented                           */
+#define EDEADLK 35   /* resource deadlock would occur                      */
+#define ENOTSUP 95   /* operation not supported                            */
+
+/* -- IRQ state --------------------------------------------------------- */
+
+/*
+ * irq_state_t: snapshot of the interrupt-enable flag at the time of
+ * irq_save().  Passed back to irq_restore() to re-enable interrupts only
+ * if they were enabled when the save occurred.
+ *
+ * Use irq_save() / irq_restore() for non-lock critical sections.
+ * Use spinlock_acquire() / spinlock_release() when mutual exclusion is
+ * also required - those calls embed irq_save/restore semantics.
+ */
+typedef bool irq_state_t;

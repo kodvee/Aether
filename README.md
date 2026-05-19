@@ -71,13 +71,13 @@ Subsystems are layered. Higher layers may depend on lower layers; lower layers m
 ```
 [ hardware / ACPI / CPUID ]
         ↓
-[ PMM → VMM → Slab allocator ]
+[ PMM -> VMM -> Slab allocator ]
         ↓
 [ GDT / IDT / LAPIC / HPET / SMP ]
         ↓
 [ ELF / Panic / Logging / ktest ]
         ↓
-[ Scheduler / Process model ]          ← not yet implemented
+[ Scheduler / Process model ]
         ↓
 [ VFS / Syscall ABI / Drivers ]        ← not yet implemented
         ↓
@@ -176,7 +176,7 @@ Memory management in Aether follows strict ownership rules. Every allocation has
 
 Aether distinguishes between three categories of failure. Each has a distinct response and must not be conflated with the others.
 
-### Programmer / Invariant Failures → Panic
+### Programmer / Invariant Failures -> Panic
 
 These are states that should never occur if the kernel is correct. When they occur, continued execution would produce undefined or corrupted behavior. The correct response is an immediate kernel panic with full diagnostics.
 
@@ -184,7 +184,7 @@ Use `KERNEL_ASSERT(cond)`, `KERNEL_BUG(msg)`, or `SUBSYS_PANIC(subsys, msg)`.
 
 Examples: use-after-free, null pointer dereference in a path that guarantees non-null, violation of a lock ordering invariant, memory corruption detected by a slab sentinel.
 
-### Recoverable Operational Failures → Return Values
+### Recoverable Operational Failures -> Return Values
 
 These are expected failure conditions that occur during normal operation. The caller must be able to detect and handle them without crashing the system.
 
@@ -192,7 +192,7 @@ Use return values (`NULL`, negative error codes, `bool` success flags). Subsyste
 
 Examples: out of memory for a user allocation, file not found, invalid syscall arguments, device not present.
 
-### Hardware / Transient Failures → Local Recovery
+### Hardware / Transient Failures -> Local Recovery
 
 These are failures caused by hardware conditions or transient state. They should be handled as close to the hardware as possible, without propagating upward unless the condition is unrecoverable.
 
@@ -214,7 +214,7 @@ Normal operational failures (OOM for user memory, invalid syscall arguments, bad
 
 ### Current State
 
-The kernel currently initializes all subsystems on the BSP (Bootstrap Processor) and brings secondary processors online through LAPIC INIT/SIPI. All cores reach a halted idle state after initialization. There is no scheduler.
+The kernel initializes all subsystems on the BSP (Bootstrap Processor), brings secondary processors online through LAPIC INIT/SIPI, and runs a preemptive SMP scheduler. Each core runs independent threads driven by LAPIC timer ticks. Kernel threads can block on wait queues and are cleaned up by a dedicated reaper thread.
 
 ### Intended Model
 
@@ -343,8 +343,8 @@ Milestones are listed in dependency order. Each milestone should produce a clean
 | ELF symbol resolution | Stable | O(log n) address lookup, section traversal |
 | Panic subsystem | Stable | Full diagnostics, SMP freeze, depth gating |
 | Structured logging | Stable | `klog` with severity levels |
-| Test framework (ktest) | Stable | 31 tests, CI-ready QEMU exit code |
-| Scheduler | Not started | - |
+| Test framework (ktest) | Stable | 66 tests, CI-ready QEMU exit code |
+| Scheduler | Stable | Round-robin SMP, thread_block, idle threads, reaper |
 | Process model | Not started | - |
 | Syscall ABI | Not started | - |
 | VFS | Not started | - |

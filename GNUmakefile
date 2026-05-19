@@ -11,10 +11,10 @@ EMU_ARGS += -serial stdio -monitor unix:util/qemu-monitor-socket,server,nowait
 
 # ------------------------------------------------------------------ #
 # Test framework QEMU args                                            #
-#   isa-debug-exit: write 0 to port 0xF4 → QEMU exit 1 (pass)       #
-#                   write 1 to port 0xF4 → QEMU exit 3 (fail)        #
+#   isa-debug-exit: write 0 to port 0xF4 -> QEMU exit 1 (pass)       #
+#                   write 1 to port 0xF4 -> QEMU exit 3 (fail)        #
 # ------------------------------------------------------------------ #
-TEST_EMU_ARGS  = -M q35 -m 2G -boot d -no-reboot -M smm=off -no-shutdown -smp 24
+TEST_EMU_ARGS  = -M q35 -m 2G -boot d -no-reboot -M smm=off -smp 24
 TEST_EMU_ARGS += -serial stdio -display none
 TEST_EMU_ARGS += -device isa-debug-exit,iobase=0xf4,iosize=0x04
 
@@ -79,7 +79,7 @@ stress: TEST_CMDLINE_EXTRA==stress
 stress: limine _test-iso
 	$(call run-test-iso,stress)
 
-# make test TEST_FILTER=slab  → runs only tests whose name contains "slab"
+# make test TEST_FILTER=slab  -> runs only tests whose name contains "slab"
 .PHONY: test-filter
 test-filter: TEST_CMDLINE_EXTRA= ktest.filter=$(TEST_FILTER)
 test-filter: limine _test-iso
@@ -115,7 +115,7 @@ base.img:
 	mkdir -p base_mnt
 	sudo mount base.img base_mnt
 	sudo cp -r base/* base_mnt/
-	sudo umount base_mnt
+	sudo umount -l base_mnt
 	rm -rf base_mnt
 
 $(ISO_NAME).iso: limine kernel base.img

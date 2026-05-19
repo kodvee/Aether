@@ -62,7 +62,7 @@ static volatile uint32_t g_panic_depth = 0;
 static void _ensure_serial(void) {
     outportb(COM1 + 1, 0x00); /* disable UART interrupts */
     outportb(COM1 + 3, 0x80); /* DLAB on */
-    outportb(COM1 + 0, 0x03); /* divisor low  → 38400 baud */
+    outportb(COM1 + 0, 0x03); /* divisor low  -> 38400 baud */
     outportb(COM1 + 1, 0x00); /* divisor high */
     outportb(COM1 + 3, 0x03); /* 8-N-1, DLAB off */
     outportb(COM1 + 2, 0xC7); /* enable FIFO */
@@ -413,7 +413,7 @@ static void _ktest_check_expected(const char *msg) {
 
     /* If a substring match is required, verify it */
     if (ctx->expected_panic_msg && msg) {
-        if (!strstr(msg, ctx->expected_panic_msg)) return; /* mismatch → real panic */
+        if (!strstr(msg, ctx->expected_panic_msg)) return; /* mismatch -> real panic */
     }
 
     /* Capture message into ctx */

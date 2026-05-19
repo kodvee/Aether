@@ -12,7 +12,7 @@
  *   - hhdm_offset is stable after pmm_init() and must not be written again.
  */
 
-/* HHDM base offset — set once by pmm_init(), valid for the kernel lifetime. */
+/* HHDM base offset - set once by pmm_init(), valid for the kernel lifetime. */
 extern uint64_t hhdm_offset;
 #define HHDM_HIGHER_HALF hhdm_offset
 

@@ -17,8 +17,8 @@ volatile ktest_ctx_t *g_ktest_active_ctx = NULL;
 
 /* ------------------------------------------------------------------ */
 /* QEMU isa-debug-exit                                                */
-/*   Write V to port 0xF4 → QEMU exits with code (V<<1)|1             */
-/*   0 → exit 1 (success), 1 → exit 3 (failure)                       */
+/*   Write V to port 0xF4 -> QEMU exits with code (V<<1)|1             */
+/*   0 -> exit 1 (success), 1 -> exit 3 (failure)                       */
 /* ------------------------------------------------------------------ */
 
 #define QEMU_EXIT_PORT 0xF4u

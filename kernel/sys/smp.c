@@ -57,7 +57,16 @@ void core_start(struct limine_smp_info *core) {
 	set_gs_register(core_local);
 
 	/* Set the struct fields to their appropriate values */
-	core_local->lapic_id = core->lapic_id;
+	core_local->lapic_id       = core->lapic_id;
+	core_local->interrupt_depth = 0;
+	core_local->current_thread = NULL;
+
+	/* Pre-initialise scheduler fields so schedule() is safe during the
+	 * window between LAPIC calibration and scheduler_init().
+	 * idle_thread == NULL is the sentinel that makes schedule() return early. */
+	list_head_init(&core_local->run_queue);
+	core_local->run_queue_lock = (spinlock_t)SPINLOCK_ZERO;
+	core_local->idle_thread    = NULL;
 
 	/* Initialize LAPIC */
 	if (!cpu_has_feature(CPU_FEATURE_APIC))
@@ -130,6 +139,7 @@ void __init smp_init(void) {
 		core_t* current = &cpu_core_local[i];
 
 		core->extra_argument = (uint64_t)current;
+		current->cpu_id      = (cpu_id_t)i;
 
 		/* If core is bsp then goto the function */
 		if(core->lapic_id != smp_response->bsp_lapic_id) {

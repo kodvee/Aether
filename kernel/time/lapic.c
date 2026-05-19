@@ -27,6 +27,13 @@ uint64_t kernel_ticks = 0;
 /* How many times the lapic timer ticks in 10ms */
 uint32_t ticksIn10ms = 0;
 
+/* Optional tick hook installed by higher-level subsystems (e.g. scheduler) */
+static lapic_tick_hook_t tick_hook = NULL;
+
+void lapic_set_tick_hook(lapic_tick_hook_t hook) {
+    tick_hook = hook;
+}
+
 /* Calibrate the LAPIC timer  */
 void __init lapic_timer_calibrate(uint64_t ns) {
 	lapic_write(LAPIC_REG_TIMER_DIV, 0x3);
@@ -48,8 +55,16 @@ void __init lapic_timer_calibrate(uint64_t ns) {
 struct regs* lapic_irq_handler(struct regs* r) {
 	kernel_ticks += ticksIn10ms;
 
-	/* Send signal saying interrupt has ended */
+	/*
+	 * Send EOI before invoking the tick hook.  The scheduler's schedule()
+	 * may context-switch to another thread and never return here, so EOI
+	 * must be acknowledged first to allow subsequent timer interrupts.
+	 */
 	lapic_write(LAPIC_REG_EOI, LAPIC_EOI_ACK);
+
+	if (tick_hook)
+		tick_hook();
+
 	return r;
 }
 

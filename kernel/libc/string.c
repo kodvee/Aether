@@ -4,21 +4,27 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <limits.h>
 #include <string.h>
-#include <kernel/types.h>
 #include <kernel/mmu.h>
 #include <memory.h>
+
+/* Word-at-a-time helpers for strlen - local to this translation unit */
+#define _STR_ALIGN  (sizeof(size_t))
+#define _STR_ONES   ((size_t)-1 / UCHAR_MAX)
+#define _STR_HIGHS  (_STR_ONES * (UCHAR_MAX / 2 + 1))
+#define _STR_HASZERO(x) (((x) - _STR_ONES) & ~(x) & _STR_HIGHS)
 
 /* Get length of string */
 size_t strlen(const char* s) {
 	const char* a = s;
 	const size_t *w;
-	for(; (uintptr_t)s % ALIGN; s++) {
+	for(; (uintptr_t)s % _STR_ALIGN; s++) {
 		if(!*s) {
 			return s-a;
 		}
 	}
-	for(w = (const void*)s; !HASZERO(*w); w++);
+	for(w = (const void*)s; !_STR_HASZERO(*w); w++);
 	for (s = (const void *)w; *s; s++);
 	return s-a;
 }

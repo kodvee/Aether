@@ -6,8 +6,13 @@
 #include <kernel/types.h>
 #include <kernel/msr.h>
 #include <kernel/panic.h>
+#include <kernel/list.h>
+#include <kernel/spinlock.h>
 
 extern uint64_t coreCount;
+
+/* Forward declaration - full definition in kernel/include/kernel/scheduler.h */
+struct thread;
 
 static inline uint64_t read_cr0(void) {
     uint64_t cr0_value;
@@ -33,13 +38,46 @@ static inline uint64_t read_cr4(void) {
     return cr4_value;
 }
 
+/*
+ * core_t - per-CPU state structure.
+ *
+ * One instance per logical CPU, allocated by smp_init() in a contiguous
+ * array (cpu_core_local[]).  The GS base register always points to the
+ * current CPU's core_t.  Access via the this_cpu() helper.
+ *
+ * Ownership rules:
+ *   - Fields are owned by the CPU they describe; cross-CPU reads are safe
+ *     for stable fields (lapic_id, bsp).
+ *   - current_thread and interrupt_depth must only be written by the
+ *     owning CPU.  Another CPU may read current_thread under a lock.
+ *
+ * Scheduler note:
+ *   current_thread is NULL while the CPU is idle.  The scheduler sets it
+ *   on context switch in and clears it when the thread is descheduled.
+ */
 typedef struct core {
-	/* Local APIC Id */
-	uint32_t lapic_id;
+    /* Stable after init - safe to read from any CPU without a lock */
+    uint32_t       lapic_id;       /* xAPIC ID of this CPU                */
+    cpu_id_t       cpu_id;         /* logical CPU index (0-based)          */
+    bool           bsp;            /* true only on the bootstrap processor */
 
-	/* If our core is the one that ran start */
-	bool bsp;
+    /* Modified only by the owning CPU */
+    uint32_t       interrupt_depth; /* 0 = normal context, >0 = in IRQ handler */
+    struct thread *current_thread;  /* thread currently executing, NULL = idle */
+
+    /* Per-core run queue (owned by this CPU; see scheduler.c) */
+    list_head_t    run_queue;       /* THREAD_READY threads for this core   */
+    spinlock_t     run_queue_lock;  /* protects run_queue and state changes */
+
+    /* Idle thread: never on any run queue; switched to explicitly when the
+     * run queue is empty and no runnable thread exists.  Non-NULL after
+     * scheduler_init() returns. */
+    struct thread *idle_thread;
 } core_t;
+
+/* Array of all per-CPU state structs, indexed by cpu_id.  Allocated by
+ * smp_init(); never freed.  Valid after smp_init() returns. */
+extern core_t *cpu_core_local;
 
 typedef struct cpu_info {
 	char* vendorId; /* Vendor, Ex: Intel, AMD, Qemu */
@@ -103,4 +141,41 @@ static inline void set_gs_register(void* toSet) {
     wrmsr(0xC0000101, (uint64_t)toSet);
 	wrmsr(0xC0000102, (uint64_t)toSet);
 	asm volatile ("swapgs");
+}
+
+/*
+ * this_cpu - return a pointer to the calling CPU's core_t.
+ *
+ * Valid after smp_init() has called set_gs_register() on every core.
+ * Must not be called before the BSP's core_t is set (before the early
+ * set_gs_register() call in kernel.c).
+ */
+static inline core_t *this_cpu(void) {
+    return (core_t *)read_gs_register();
+}
+
+/* ------------------------------------------------------------------ */
+/* IRQ control primitives                                               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * irq_save() / irq_restore() - explicit IRQ state management.
+ *
+ * Use these for non-lock critical sections that need to be
+ * interrupt-safe without full mutual exclusion.
+ *
+ * Nesting is supported: irq_save() returns the state *before* disabling,
+ * and irq_restore() re-enables only if that state was enabled.
+ *
+ * For mutual exclusion + IRQ safety, prefer spinlock_acquire() /
+ * spinlock_release() which embed these semantics.
+ */
+static inline irq_state_t irq_save(void) {
+    irq_state_t s = interrupt_state();
+    disable_interrupts();
+    return s;
+}
+
+static inline void irq_restore(irq_state_t state) {
+    if (state) enable_interrupts();
 }

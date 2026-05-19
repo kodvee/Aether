@@ -28,7 +28,7 @@ static volatile struct limine_kernel_file_request kfile_request = {
     .revision = 0,
 };
 
-/* Global kernel ELF image — declared const in elf.h so callers cannot write
+/* Global kernel ELF image - declared const in elf.h so callers cannot write
  * to it. Placed in .data (not .rodata) because elf_init writes to it once
  * at boot via a cast-away-const pointer. */
 __attribute__((section(".data"))) const elf_image_t kelf = { .loaded = false };
@@ -78,7 +78,7 @@ static void build_sorted_index(elf_image_t *img) {
     img->sorted_count = 0;
 
     if (!img->sorted_idx) {
-        KWARN("elf", "out of memory for sorted index — address lookup degraded");
+        KWARN("elf", "out of memory for sorted index - address lookup degraded");
         return;
     }
 
@@ -313,7 +313,7 @@ void elf_image_free(elf_image_t *img) {
 void __init elf_init(void) {
     if (kfile_request.response == NULL ||
         kfile_request.response->kernel_file == NULL) {
-        KWARN("elf", "kernel file not provided by bootloader — symbol resolution disabled");
+        KWARN("elf", "kernel file not provided by bootloader - symbol resolution disabled");
         return;
     }
     elf_image_load((elf_image_t *)&kelf, kfile_request.response->kernel_file->address);

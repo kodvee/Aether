@@ -41,7 +41,7 @@ typedef struct {
  *   - elf_image_load must not be called before slab_init.
  *   - elf_image_load must be called before clean_reclaimable_memory.
  *   - All elf_* query functions (elf_sym_by_addr, elf_sym_by_name, etc.)
- *     are safe when img->loaded == false — they return NULL/false immediately.
+ *     are safe when img->loaded == false - they return NULL/false immediately.
  *   - elf_sym_by_addr and elf_sym_by_name make no allocations and are safe
  *     in interrupt and panic context.
  *   - The kernel must be compiled with -fno-omit-frame-pointer for stack

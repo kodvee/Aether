@@ -71,7 +71,7 @@ KTEST("elf-sym-missing", "elf",
       KT_FLAG_NONE, test_elf_sym_by_name_missing);
 
 /* ------------------------------------------------------------------ */
-/* Address → symbol roundtrip                                           */
+/* Address -> symbol roundtrip                                           */
 /* ------------------------------------------------------------------ */
 
 static void test_elf_addr_roundtrip(ktest_ctx_t *ctx) {

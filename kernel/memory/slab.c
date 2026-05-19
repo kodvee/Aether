@@ -196,7 +196,7 @@ void free(void *addr) {
         return;
     }
 
-    SUBSYS_PANIC("slab", "free: corrupt page magic — double-free or bad pointer");
+    SUBSYS_PANIC("slab", "free: corrupt page magic - double-free or bad pointer");
 }
 
 void *realloc(void *addr, size_t new_size) {
@@ -237,7 +237,7 @@ void *realloc(void *addr, size_t new_size) {
         return newp;
     }
 
-    SUBSYS_PANIC("slab", "realloc: corrupt page magic — double-free or bad pointer");
+    SUBSYS_PANIC("slab", "realloc: corrupt page magic - double-free or bad pointer");
 }
 
 /* -- Initialise all caches ---------------------------------------------- */

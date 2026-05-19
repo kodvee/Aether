@@ -18,7 +18,10 @@
 static struct idt_pointer idtp;
 static idt_entry_t idt[256];
 
-static uint8_t free_vector = 32;
+/* Vector 32 is permanently reserved for the LAPIC timer (installed by smp_init
+ * via irq_install without going through idt_allocate).  Dynamic allocation
+ * starts at 33 so callers never get a vector that is already in use. */
+static uint8_t free_vector = 33;
 
 void idt_set_gate(uint8_t num, void* handler, uint16_t selector, uint8_t flags, int userspace) {
 	uintptr_t base = (uintptr_t)handler;
@@ -69,7 +72,7 @@ void idt_reload(void) {
 
 void irq_install(irq_t irq, int index) {
 	irqs[index - 32] = irq;
-	KINFO("irq", "vector %d → %p", index, (void *)(uintptr_t)irqs[index - 32]);
+	KINFO("irq", "vector %d -> %p", index, (void *)(uintptr_t)irqs[index - 32]);
 }
 
 irq_t irq_get(int vector) {
