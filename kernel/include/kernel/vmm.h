@@ -35,5 +35,6 @@ extern pagemap_t *mmu_kernel_pagemap;
 void       vmm_init(void);
 void       mmu_map_page(pagemap_t *pagemap, uintptr_t virt, uintptr_t phys, uint64_t flags);
 void       mmu_unmap_page(pagemap_t *pagemap, uintptr_t virt);
+uintptr_t  mmu_virt_to_phys(pagemap_t *pagemap, uintptr_t virt);
 pagemap_t *vmm_new_pagemap(void);
 void       mmu_switch_pagemap(pagemap_t *pagemap);

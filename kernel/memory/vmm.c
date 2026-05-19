@@ -56,6 +56,18 @@ void mmu_unmap_page(pagemap_t *pagemap, uintptr_t virt) {
     asm volatile ("invlpg (%0)" :: "r"(virt) : "memory");
 }
 
+uintptr_t mmu_virt_to_phys(pagemap_t *pagemap, uintptr_t virt) {
+    uint64_t *pdp = get_next_level(pagemap,  (virt >> 39) & 0x1FF, false);
+    if (!pdp) return 0;
+    uint64_t *pd  = get_next_level(pdp,      (virt >> 30) & 0x1FF, false);
+    if (!pd)  return 0;
+    uint64_t *pt  = get_next_level(pd,       (virt >> 21) & 0x1FF, false);
+    if (!pt)  return 0;
+    uint64_t pte  = pt[(virt >> 12) & 0x1FF];
+    if (!(pte & PTE_PRESENT)) return 0;
+    return PTE_GET_ADDR(pte);
+}
+
 /*
  * vmm_new_pagemap - allocate a fresh PML4 and copy the kernel's higher-half
  * entries (indices 256–511) so the new pagemap shares kernel mappings.

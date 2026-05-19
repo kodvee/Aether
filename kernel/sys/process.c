@@ -6,7 +6,6 @@
  * and drive the page-table entries.
  *
  * Physical frames are allocated via mmu_request_frame() (panics on OOM).
- * TODO: track physical frames per VMA so process_munmap can free them.
  */
 
 #include <stdint.h>
@@ -113,9 +112,12 @@ void process_munmap(process_t *proc, uintptr_t addr, size_t length) {
             list_remove(n);
             spinlock_release(&proc->lock, irq);
 
-            /* Unmap pages (physical frames are not freed yet — TODO) */
-            for (uintptr_t off = 0; off < length; off += PAGE_SIZE)
+            /* Unmap pages and free their physical frames */
+            for (uintptr_t off = 0; off < length; off += PAGE_SIZE) {
+                uintptr_t phys = mmu_virt_to_phys(proc->pagemap, addr + off);
                 mmu_unmap_page(proc->pagemap, addr + off);
+                if (phys) mmu_free_frames((void *)phys, 1);
+            }
 
             free(vma);
             return;
