@@ -14,6 +14,7 @@
 #include <kernel/cpufeature.h>
 #include <kernel/apic.h>
 #include <kernel/msr.h>
+#include <kernel/syscall.h>
 
 uint32_t bsp_lapic_id = 0;
 uint64_t coreCount = 0;
@@ -68,6 +69,11 @@ void core_start(struct limine_smp_info *core) {
 
 	/* Set GS register as local core */
 	set_gs_register(core_local);
+
+	/* Enable SYSCALL/SYSRET and program STAR/LSTAR/SFMASK for this core.
+	 * Must come after gdt_load_core (needs the per-core GDT to be live)
+	 * and after set_gs_register (syscall_entry uses %gs to reach core_t). */
+	syscall_init();
 
 	/* Initialize LAPIC */
 	if (!cpu_has_feature(CPU_FEATURE_APIC))

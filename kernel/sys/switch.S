@@ -72,3 +72,65 @@ thread_entry_trampoline:
     call   *%r12        /* call thread entry function                      */
     call   thread_exit  /* entry returned - clean up                       */
     ud2                 /* unreachable                                     */
+
+/*
+ * context_enter - one-way context switch (load only, no save).
+ *
+ * void context_enter(context_regs_t *incoming)
+ *   %rdi = incoming (context_regs_t *)
+ *
+ * Restores callee-saved registers and RSP from *incoming, then jumps to
+ * incoming->rip.  No outgoing context is saved.
+ *
+ * Used in scheduler_enter() and the current==NULL path of schedule() where
+ * there is no outgoing thread context to preserve.  Using context_switch with
+ * a stack-local dummy there is dangerous: the dummy captures the return
+ * address (which is a KERNEL_BUG), and if something ever restores from it
+ * the kernel panics.
+ */
+.global context_enter
+.type   context_enter, @function
+context_enter:
+    mov    16(%rdi), %rbx
+    mov    24(%rdi), %rbp
+    mov    32(%rdi), %r12
+    mov    40(%rdi), %r13
+    mov    48(%rdi), %r14
+    mov    56(%rdi), %r15
+    mov     8(%rdi), %rsp
+    jmp    *0(%rdi)
+
+/*
+ * user_thread_trampoline - first-run entry for user-mode threads.
+ *
+ * Jumped to by context_switch when a user thread is scheduled for the first
+ * time.  Register state loaded from the thread's context_regs_t by
+ * context_switch (see thread_create_user in scheduler.c):
+ *
+ *   r12 = user RIP  (ELF e_entry)
+ *   r13 = user RSP  (initial user stack pointer)
+ *   r14 = CR3 value (process pagemap physical address)
+ *
+ * Kernel higher-half mappings are present in the user pagemap (copied from
+ * mmu_kernel_pagemap by vmm_new_pagemap), so the kernel stack and code
+ * remain accessible after the CR3 switch until IRETQ drops to ring-3.
+ *
+ * IRETQ frame (64-bit inter-privilege, 5 × 8 bytes, pushed in reverse):
+ *   SS    = 0x1B (SEG_UDATA | RPL3)
+ *   RSP   = user stack pointer
+ *   RFLAGS= 0x202 (IF=1, reserved bit 1 set)
+ *   CS    = 0x23 (SEG_UCODE | RPL3)
+ *   RIP   = user entry point
+ */
+.global user_thread_trampoline
+.type   user_thread_trampoline, @function
+user_thread_trampoline:
+    sti                     /* re-enable interrupts: on a valid kstack now  */
+    mov    %r14, %cr3       /* switch to user pagemap                       */
+
+    push   $0x1b            /* SS   = SEG_UDATA | 3                         */
+    push   %r13             /* RSP  = user stack pointer                    */
+    pushq  $0x202           /* RFLAGS: IF=1, bit 1 reserved (must be set)  */
+    push   $0x23            /* CS   = SEG_UCODE | 3                         */
+    push   %r12             /* RIP  = user entry point                      */
+    iretq

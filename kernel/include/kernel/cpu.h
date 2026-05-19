@@ -57,6 +57,19 @@ static inline uint64_t read_cr4(void) {
  *   on context switch in and clears it when the thread is descheduled.
  */
 typedef struct core {
+    /*
+     * SYSCALL fast-path state.  These two fields MUST remain at byte offsets
+     * 0 and 8 within core_t — syscall.S hardcodes %gs:0 and %gs:8.
+     *
+     * syscall_ksp:    kernel stack pointer for ring-3 → ring-0 transitions.
+     *                 Mirrors tss.rsp0; updated by the scheduler on every
+     *                 context switch.
+     * ustack_scratch: one-word scratch cell used by the syscall entry stub
+     *                 to park the user RSP before the stack switch.
+     */
+    uintptr_t      syscall_ksp;
+    uintptr_t      ustack_scratch;
+
     /* Stable after init - safe to read from any CPU without a lock */
     uint32_t       lapic_id;       /* xAPIC ID of this CPU                */
     cpu_id_t       cpu_id;         /* logical CPU index (0-based)          */

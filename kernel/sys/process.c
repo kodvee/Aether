@@ -30,6 +30,7 @@ process_t *process_create(const char *name) {
     proc->thread_count = 0;
     list_head_init(&proc->vma_list);
     proc->mmap_base    = MMAP_BASE;
+    proc->brk          = 0;
 
     return proc;
 }

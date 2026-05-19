@@ -32,7 +32,9 @@
 
 /* asm stubs in sys/switch.S */
 extern void context_switch(context_regs_t *outgoing, context_regs_t *incoming);
+extern void context_enter(context_regs_t *incoming);
 extern void thread_entry_trampoline(void);
+extern void user_thread_trampoline(void);
 
 /* Atomic ID allocators */
 static _Atomic int32_t next_tid = 1;
@@ -168,6 +170,22 @@ thread_t *thread_create(process_t *parent, void (*entry)(void)) {
     return t;
 }
 
+thread_t *thread_create_user(process_t *proc, uintptr_t entry, uintptr_t usp) {
+    thread_t *t = thread_create(proc, NULL);
+    if (!t) return NULL;
+
+    t->ustack_top  = usp;
+    /* user_thread_trampoline reads these from the restored callee-saved regs:
+     *   r12 = user entry point
+     *   r13 = user RSP
+     *   r14 = CR3 value (pagemap physical address = pagemap_virt - HHDM) */
+    t->context.rip = (uintptr_t)user_thread_trampoline;
+    t->context.r12 = entry;
+    t->context.r13 = usp;
+    t->context.r14 = (uintptr_t)proc->pagemap - HHDM_HIGHER_HALF;
+    return t;
+}
+
 void thread_ready_on(thread_t *t, cpu_id_t core_id) {
     KERNEL_ASSERT(core_id < (cpu_id_t)coreCount);
     core_t *cpu = &cpu_core_local[core_id];
@@ -208,24 +226,23 @@ void __attribute__((noreturn)) scheduler_enter(void) {
         idle->state         = THREAD_RUNNING;
         cpu->current_thread = idle;
         cpu->tss.rsp0       = idle->kstack_top;
+        cpu->syscall_ksp    = idle->kstack_top;
         spinlock_release(&cpu->run_queue_lock, irq);
 
-        context_regs_t dummy;
-        context_switch(&dummy, &idle->context);
-        KERNEL_BUG("scheduler_enter: returned from idle context_switch");
+        context_enter(&idle->context);
+        __builtin_unreachable();
     }
 
     thread_t *first     = list_entry(node, thread_t, list_node);
     first->state        = THREAD_RUNNING;
     cpu->current_thread = first;
     cpu->tss.rsp0       = first->kstack_top;
+    cpu->syscall_ksp    = first->kstack_top;
 
     spinlock_release(&cpu->run_queue_lock, irq);
 
-    context_regs_t dummy;
-    context_switch(&dummy, &first->context);
-
-    KERNEL_BUG("scheduler_enter: returned from context_switch");
+    context_enter(&first->context);
+    __builtin_unreachable();
 }
 
 /* ------------------------------------------------------------------ */
@@ -270,6 +287,7 @@ void schedule(void) {
     next->state         = THREAD_RUNNING;
     cpu->current_thread = next;
     cpu->tss.rsp0       = next->kstack_top;   /* ring-3 → ring-0 stack */
+    cpu->syscall_ksp    = next->kstack_top;
 
     spinlock_release(&cpu->run_queue_lock, irq);
 
@@ -277,8 +295,7 @@ void schedule(void) {
         context_switch(&current->context, &next->context);
         /* Resumes here when this thread is scheduled back in */
     } else {
-        context_regs_t dummy;
-        context_switch(&dummy, &next->context);
+        context_enter(&next->context);
     }
 }
 

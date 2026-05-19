@@ -102,8 +102,12 @@ ovmf:
 	mkdir -p ovmf
 	cd ovmf && curl -Lo OVMF-X64.zip https://efi.akeo.ie/OVMF/OVMF-X64.zip && unzip OVMF-X64.zip
 
+.PHONY: userspace
+userspace:
+	$(MAKE) -C userspace/init
+
 .PHONY: kernel
-kernel:
+kernel: userspace
 	$(MAKE) -C kernel
 
 .PHONY: docs
@@ -136,6 +140,7 @@ $(ISO_NAME).iso: limine kernel base.img
 clean:
 	rm -rf iso_root $(ISO_NAME).iso base.img
 	rm -rf documentation
+	$(MAKE) -C userspace/init clean
 	$(MAKE) -C kernel clean
 	-rm -f qlog.txt
 

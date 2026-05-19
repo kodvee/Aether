@@ -273,6 +273,7 @@ typedef struct process {
     /* User address space */
     list_head_t  vma_list;      /* vma_t entries; protected by lock        */
     uintptr_t    mmap_base;     /* watermark for next anonymous mmap()     */
+    uintptr_t    brk;           /* program break; set by ELF loader        */
 } process_t;
 
 /* ------------------------------------------------------------------ */
@@ -324,6 +325,21 @@ void scheduler_start_reaper(void);
  * call thread_destroy() when the thread has reached THREAD_DEAD.
  */
 thread_t *thread_create(process_t *parent, void (*entry)(void));
+
+/*
+ * thread_create_user - create a thread that enters user space on first run.
+ *
+ * Sets up context to jump to user_thread_trampoline on first schedule, which
+ * loads CR3 (proc->pagemap) and performs an IRETQ to ring-3 at entry/usp.
+ * The entry point and stack pointer are passed through callee-saved context
+ * registers (r12/r13/r14) so no new fields are needed on thread_t.
+ *
+ * entry: user-space instruction pointer (ELF e_entry)
+ * usp:   initial user stack pointer
+ *
+ * Returns NULL on allocation failure.
+ */
+thread_t *thread_create_user(process_t *proc, uintptr_t entry, uintptr_t usp);
 
 /*
  * thread_ready - transition a THREAD_CREATED or THREAD_BLOCKED thread to

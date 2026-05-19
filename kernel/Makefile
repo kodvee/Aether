@@ -31,6 +31,11 @@ KERNEL_ASMOBJECTS := $(filter-out ./symbols.o, $(KERNEL_ASMOBJECTS))
 	@$(CC) $(KERNEL_CFLAGS) -c $< -o $@
 	@echo     CC -c $< -o $@
 
+init/init.elf:
+	$(MAKE) -C $(CURDIR)/../userspace/init
+
+init/embed.asm.o: init/embed.S init/init.elf
+
 kernel.elf: $(KERNEL_OBJECTS) $(KERNEL_ASMOBJECTS)
 	@echo Building kernel...
 	$(LD) $(KERNEL_LDFLAGS) -o kernel.elf $(KERNEL_OBJECTS) $(KERNEL_ASMOBJECTS)

@@ -40,6 +40,7 @@ typedef int errno_t;
 #define EOK      0   /* success                                            */
 #define EPERM    1   /* operation not permitted                            */
 #define ENOENT   2   /* no such file or directory                          */
+#define EBADF    9   /* bad file descriptor                                */
 #define ESRCH    3   /* no such process                                    */
 #define EINTR    4   /* interrupted system call                            */
 #define EFAULT  14   /* bad address                                        */
@@ -48,6 +49,7 @@ typedef int errno_t;
 #define ENOMEM  12   /* out of memory                                      */
 #define ENOSYS  38   /* function not implemented                           */
 #define EDEADLK 35   /* resource deadlock would occur                      */
+#define ENOTTY  25   /* inappropriate ioctl for device                     */
 #define ENOTSUP 95   /* operation not supported                            */
 
 /* -- IRQ state --------------------------------------------------------- */

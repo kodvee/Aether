@@ -88,6 +88,15 @@ void __init printf_init(void) {
 	context->cursor_enabled = false;
 }
 
+void kwrite(const char *buf, size_t len) {
+    bool int_state = spinlock_acquire(&printlock);
+    if (context)
+        flanterm_write(context, buf, len);
+    for (size_t i = 0; i < len; i++)
+        outportb(COM1, buf[i]);
+    spinlock_release(&printlock, int_state);
+}
+
 /**
  * kprintf: Print to framebuffer, also prints to serial if SERIAL_LOG parameter is passed at compile time
  */

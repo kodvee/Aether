@@ -18,6 +18,8 @@
 #include <kernel/panic.h>
 #include <kernel/ktest.h>
 #include <kernel/scheduler.h>
+#include <kernel/syscall.h>
+#include <kernel/elf_loader.h>
 #include <stdbool.h>
 
 __attribute__((used, section(".requests")))
@@ -33,16 +35,27 @@ static volatile LIMINE_REQUESTS_END_MARKER;
 static core_t* core_bsp = NULL;
 
 /*
- * first_thread_fn - entry function for each core's first kernel thread.
- *
- * Prints a confirmation that the core has successfully switched to its
- * first scheduled thread, then enters an idle halt loop.  This validates
- * that context switching and per-core scheduling are working.
+ * first_thread_fn - entry for each AP's first kernel thread.
+ * Confirms the AP reached its first scheduled context, then exits.
  */
 static void first_thread_fn(void) {
     core_t *cpu = this_cpu();
-    kprintf("sched: CPU %u switched to its first thread (tid %d)\n",
+    kprintf("sched: CPU %u online (tid %d)\n",
             cpu->cpu_id, cpu->current_thread->tid);
+    thread_exit();
+}
+
+/*
+ * kernel_init - BSP's first kernel thread.
+ *
+ * Runs after the full scheduler is live (LAPIC ticks armed, all AP queues
+ * populated).  Loads and schedules the embedded init process, then exits.
+ */
+static void kernel_init(void) {
+    core_t *cpu = this_cpu();
+    kprintf("sched: CPU %u kernel_init (tid %d)\n",
+            cpu->cpu_id, cpu->current_thread->tid);
+    init_spawn();
     thread_exit();
 }
 
@@ -68,6 +81,9 @@ void _start(void) {
 
 	/* Initialize the slab allocator */
 	slab_init();
+
+	/* Register all built-in syscall handlers */
+	syscalls_init();
 
 	core_bsp = malloc(sizeof(*core_bsp));
 	core_bsp->bsp            = true;
@@ -159,7 +175,7 @@ void _start(void) {
 	 * scheduler_enter, schedule() will have already done the first switch;
 	 * scheduler_enter handles an empty queue gracefully.
 	 */
-	thread_t *bsp_thread = thread_create(&kernel_process, first_thread_fn);
+	thread_t *bsp_thread = thread_create(&kernel_process, kernel_init);
 	KERNEL_ASSERT(bsp_thread != NULL);
 	thread_ready_on(bsp_thread, 0);
 	scheduler_enter();
