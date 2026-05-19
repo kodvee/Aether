@@ -34,10 +34,20 @@ typedef struct {
 } elf_image_t;
 
 /*
- * Global kernel ELF image. Populated by elf_image_load during early init.
- * Safe to read from any context after that point.
+ * Global kernel ELF image. Populated by elf_init() during early boot.
+ * Read-only after elf_init() returns; must not be written by any caller.
+ *
+ * ELF invariants:
+ *   - elf_image_load must not be called before slab_init.
+ *   - elf_image_load must be called before clean_reclaimable_memory.
+ *   - All elf_* query functions (elf_sym_by_addr, elf_sym_by_name, etc.)
+ *     are safe when img->loaded == false — they return NULL/false immediately.
+ *   - elf_sym_by_addr and elf_sym_by_name make no allocations and are safe
+ *     in interrupt and panic context.
+ *   - The kernel must be compiled with -fno-omit-frame-pointer for stack
+ *     traces to be meaningful.
  */
-extern elf_image_t kelf;
+extern const elf_image_t kelf;
 
 /*
  * elf_init - load the kernel's own ELF image into kelf.
@@ -45,6 +55,13 @@ extern elf_image_t kelf;
  * before clean_reclaimable_memory() reclaims Limine pages.
  */
 void elf_init(void);
+
+/*
+ * elf_image_free - release all heap allocations made by elf_image_load.
+ * Sets img->loaded = false. Safe to call on an already-freed or
+ * never-loaded image. Do not call on &kelf (kernel image is permanent).
+ */
+void elf_image_free(elf_image_t *img);
 
 /* Returns the Limine-provided kernel cmdline, or NULL if unavailable. */
 const char *kernel_cmdline(void);

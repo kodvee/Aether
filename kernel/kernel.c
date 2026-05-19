@@ -8,23 +8,16 @@
 #include <kernel/ports.h>
 #include <kernel/cpufeature.h>
 #include <kernel/mmu.h>
-#include <stdbool.h>
+#include <kernel/int.h>
+#include <kernel/elf.h>
+#include <kernel/gdt.h>
+#include <kernel/smp.h>
+#include <kernel/acpi.h>
 #include <kernel/hpet.h>
 #include <kernel/apic.h>
+#include <kernel/panic.h>
 #include <kernel/ktest.h>
-
-extern void debug_printf_init(void);
-extern void gdt_init(void);
-extern void pmm_init(void);
-extern void vmm_init(void);
-extern void idt_init(void);
-extern void elf_init(void);
-extern void printf_init(void);
-extern void smp_init(void);
-extern void cpuinfo_init(void);
-extern void acpi_init(void);
-extern void hpet_init(void);
-extern void cpu_feature_init(void);
+#include <stdbool.h>
 
 __attribute__((used, section(".requests")))
 static volatile LIMINE_BASE_REVISION(2);
@@ -35,23 +28,16 @@ static volatile LIMINE_REQUESTS_START_MARKER;
 __attribute__((used, section(".requests_end_marker")))
 static volatile LIMINE_REQUESTS_END_MARKER;
 
-void kinit_func(void) {
-	kprintf("Reclaimed a total of %lu bytes\n", clean_reclaimable_memory());
-	for(;;) {
-		kprintf("x");
-	}
-}
-
 /* Initial core */
 static core_t* core_bsp = NULL;
 
-/**
- * The kernel start function. The kernel begins executing from
- * this function, this is called by the limine bootloader.
- * 
- * It prints the kernel information and initializes the kernel uptil the scheduler
- * when a kinit thread is started which finished the initialization
-*/
+/*
+ * _start - kernel entry point, called by the Limine bootloader on the BSP.
+ *
+ * Initializes all subsystems in dependency order: PMM → VMM → GDT → IDT →
+ * slab → printf → ACPI → ELF → HPET → SMP. In test builds, runs the ktest
+ * suite before halting.
+ */
 void _start(void) {
 	/* Initialize physical memory manager */
     pmm_init();
@@ -68,7 +54,7 @@ void _start(void) {
 	/* Initialize the slab allocator */
 	slab_init();
 
-	core_bsp = malloc(sizeof(core_bsp));
+	core_bsp = malloc(sizeof(*core_bsp));
 	core_bsp->bsp = true;
 	core_bsp->lapic_id = 0;
 	set_gs_register(core_bsp);
@@ -101,7 +87,9 @@ void _start(void) {
 	/* Load the CPU information */
 	cpuinfo_init();
 
-	/* Disable the PIC because we are using the ioapic */
+	/* Mask all 8259 PIC IRQ lines before the IOAPIC takes over.
+	 * Without this, any PIC-sourced interrupt fires on an unmapped vector
+	 * after IDT init and causes a spurious fault. */
 	outportb(0xA1, 0xff);
 	outportb(0x21, 0xff);
 

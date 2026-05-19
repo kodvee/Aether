@@ -15,6 +15,15 @@ typedef struct stack_frame {
     uint64_t            rip;
 } stack_frame_t;
 
+/*
+ * Stacktrace invariants:
+ *   - Requires the kernel to be compiled with -fno-omit-frame-pointer.
+ *   - Symbol resolution requires kelf.loaded == true (set by elf_init).
+ *     If kelf is not loaded, frames are printed as bare addresses.
+ *   - All three functions are allocation-free and safe in interrupt and
+ *     panic context.
+ */
+
 /* struct regs is defined in cpu.h; forward-declare to avoid the header pull */
 struct regs;
 

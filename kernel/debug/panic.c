@@ -18,6 +18,7 @@
  */
 
 #include <kernel/panic.h>
+#include <kernel/kprintf.h>
 #include <kernel/elf.h>
 #include <kernel/stacktrace.h>
 #include <kernel/apic.h>
@@ -36,16 +37,6 @@
 #ifdef KTEST_ENABLED
 #include <kernel/ktest.h>
 #endif
-
-/* flanterm context - lives in printf.c */
-extern struct flanterm_context *context;
-
-/* LAPIC IPI guard - set by lapic.c after lapic_init completes */
-extern bool lapic_initialized;
-
-/* CPU info - populated by cpuinfo_init; may be NULL in early boot panics */
-typedef struct { char *vendorId; char *cpuName; uint32_t coreCount; uint64_t cpuFeatures; } _cpu_info_t;
-extern _cpu_info_t *cpu_info;
 
 /* Total SMP core count - set by smp_init */
 extern uint64_t coreCount;
@@ -107,8 +98,10 @@ static void _serial_puts(const char *s) {
 static bool g_serial_only = false;
 
 static void _panic_write(const char *buf, size_t n) {
-    if (!g_serial_only && context)
-        flanterm_write(context, buf, n);
+    if (!g_serial_only) {
+        struct flanterm_context *ctx = printf_get_context();
+        if (ctx) flanterm_write(ctx, buf, n);
+    }
     _serial_write(buf, n);
 }
 
@@ -282,10 +275,12 @@ static void _render_full(panic_category_t cat, const char *subsys,
                          uint64_t err_code, uint32_t apic_id,
                          uint32_t depth)
 {
+    struct flanterm_context *fb_ctx = printf_get_context();
+
     /* Red screen via ANSI - framebuffer only */
-    if (context) {
+    if (fb_ctx) {
         static const char red_esc[] = "\033[0;41m\033[2J\033[H";
-        flanterm_write(context, red_esc, sizeof(red_esc) - 1);
+        flanterm_write(fb_ctx, red_esc, sizeof(red_esc) - 1);
     }
 
     /* Serial banner */
@@ -295,9 +290,9 @@ static void _render_full(panic_category_t cat, const char *subsys,
     _serial_puts("============================================================\r\n");
 
     /* Framebuffer header */
-    if (context) {
+    if (fb_ctx) {
         static const char hdr[] = "\n  *** KERNEL PANIC ***\n\n";
-        flanterm_write(context, hdr, sizeof(hdr) - 1);
+        flanterm_write(fb_ctx, hdr, sizeof(hdr) - 1);
     }
 
     /* Kernel version and build info */
@@ -311,10 +306,12 @@ static void _render_full(panic_category_t cat, const char *subsys,
                   __kernel_compiler_version);
 
     /* CPU info (only if cpuinfo_init has run) */
-    if (cpu_info && cpu_info->vendorId && cpu_info->cpuName) {
-        _panic_printf("CPU      : %s - %s  (%u cores active, %lu total)\n",
-                      cpu_info->vendorId, cpu_info->cpuName,
-                      cpu_info->coreCount, coreCount);
+    {
+        cpu_info_t *ci = cpu_info;
+        if (ci && ci->vendorId && ci->cpuName) {
+            _panic_printf("CPU      : %s - %s  (%u cores active, %lu total)\n",
+                          ci->vendorId, ci->cpuName, ci->coreCount, coreCount);
+        }
     }
     _panic_puts("\n");
 
@@ -508,23 +505,3 @@ void _kpanic_impl(panic_category_t cat, const char *subsys,
     __builtin_unreachable();
 }
 
-/* ------------------------------------------------------------------ */
-/* Structured logging                                                   */
-/* ------------------------------------------------------------------ */
-
-void klog(log_severity_t sev, const char *subsys, const char *fmt, ...) {
-    static const char *const prefixes[] = {
-        "[DBG] ", "[INF] ", "[WRN] ", "[ERR] ",
-    };
-    const char *pfx = (sev <= LOG_ERROR) ? prefixes[(int)sev] : "[???] ";
-
-    char buf[512];
-    va_list ap;
-    va_start(ap, fmt);
-    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
-    va_end(ap);
-
-    /* Use kprintf so it goes through the normal output path with lock */
-    extern void kprintf(const char *fmt, ...);
-    kprintf("%s%s: %.*s\n", pfx, subsys ? subsys : "?", n > 0 ? n : 0, buf);
-}

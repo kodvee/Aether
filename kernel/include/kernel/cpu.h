@@ -50,6 +50,10 @@ typedef struct cpu_info {
 
 extern uint32_t bsp_lapic_id;
 
+/* cpu_info is populated by cpuinfo_init(); NULL before that call. */
+extern cpu_info_t *cpu_info;
+void cpuinfo_init(void);
+
 static inline bool interrupt_state(void) {
     uint64_t flags;
     asm volatile ("pushfq; pop %0" : "=rm"(flags) :: "memory");

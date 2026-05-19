@@ -10,7 +10,7 @@
  */
 
 #include <kernel/elf.h>
-#include <kernel/kprintf.h>
+#include <kernel/panic.h>
 #include <kernel/mmu.h>      /* malloc */
 #include <kernel/macros.h>
 #include <limine.h>
@@ -28,8 +28,10 @@ static volatile struct limine_kernel_file_request kfile_request = {
     .revision = 0,
 };
 
-/* Global kernel ELF image populated by elf_image_load */
-elf_image_t kelf = { .loaded = false };
+/* Global kernel ELF image — declared const in elf.h so callers cannot write
+ * to it. Placed in .data (not .rodata) because elf_init writes to it once
+ * at boot via a cast-away-const pointer. */
+__attribute__((section(".data"))) const elf_image_t kelf = { .loaded = false };
 
 /* ------------------------------------------------------------------ */
 /* Internal helpers                                                     */
@@ -40,19 +42,19 @@ static bool elf_validate(const Elf64_Ehdr *hdr) {
         hdr->e_ident[1] != ELFMAG1 ||
         hdr->e_ident[2] != ELFMAG2 ||
         hdr->e_ident[3] != ELFMAG3) {
-        kprintf("elf: bad magic\n");
+        KERROR("elf", "bad magic");
         return false;
     }
     if (hdr->e_ident[4] != ELFCLASS64) {
-        kprintf("elf: not a 64-bit ELF\n");
+        KERROR("elf", "not a 64-bit ELF");
         return false;
     }
     if (hdr->e_ident[5] != ELFDATA2LSB) {
-        kprintf("elf: not little-endian\n");
+        KERROR("elf", "not little-endian");
         return false;
     }
     if (hdr->e_machine != EM_X86_64) {
-        kprintf("elf: not x86-64\n");
+        KERROR("elf", "not x86-64");
         return false;
     }
     return true;
@@ -76,7 +78,7 @@ static void build_sorted_index(elf_image_t *img) {
     img->sorted_count = 0;
 
     if (!img->sorted_idx) {
-        kprintf("elf: out of memory for sorted index\n");
+        KWARN("elf", "out of memory for sorted index — address lookup degraded");
         return;
     }
 
@@ -111,7 +113,7 @@ bool elf_image_load(elf_image_t *img, const void *elf_data) {
     if (!elf_validate(hdr)) return false;
 
     if (hdr->e_shentsize < sizeof(Elf64_Shdr)) {
-        kprintf("elf: section header entry too small (%u)\n", hdr->e_shentsize);
+        KERROR("elf", "section header entry too small (%u)", hdr->e_shentsize);
         return false;
     }
 
@@ -126,7 +128,7 @@ bool elf_image_load(elf_image_t *img, const void *elf_data) {
      */
     if (shnum == 0) {
         if (hdr->e_shoff == 0) {
-            kprintf("elf: no section headers\n");
+            KERROR("elf", "no section headers");
             return false;
         }
         shnum = (uint16_t)raw_shdrs[0].sh_size;
@@ -138,7 +140,7 @@ bool elf_image_load(elf_image_t *img, const void *elf_data) {
         shstrndx = raw_shdrs[0].sh_link;
 
     if (shstrndx >= shnum) {
-        kprintf("elf: shstrndx %u out of range (%u sections)\n", shstrndx, shnum);
+        KERROR("elf", "shstrndx %u out of range (%u sections)", shstrndx, shnum);
         return false;
     }
 
@@ -146,7 +148,7 @@ bool elf_image_load(elf_image_t *img, const void *elf_data) {
     size_t shdrs_bytes = (size_t)shnum * sizeof(Elf64_Shdr);
     Elf64_Shdr *shdrs_copy = malloc(shdrs_bytes);
     if (!shdrs_copy) {
-        kprintf("elf: out of memory for shdrs\n");
+        KERROR("elf", "out of memory for shdrs");
         return false;
     }
     memcpy(shdrs_copy, raw_shdrs, shdrs_bytes);
@@ -155,7 +157,7 @@ bool elf_image_load(elf_image_t *img, const void *elf_data) {
     const Elf64_Shdr *shstr_shdr = &shdrs_copy[shstrndx];
     char *shstrtab_copy = malloc(shstr_shdr->sh_size);
     if (!shstrtab_copy) {
-        kprintf("elf: out of memory for shstrtab\n");
+        KERROR("elf", "out of memory for shstrtab");
         free(shdrs_copy);
         return false;
     }
@@ -179,13 +181,13 @@ bool elf_image_load(elf_image_t *img, const void *elf_data) {
     }
 
     if (!symtab_shdr) {
-        kprintf("elf: no SHT_SYMTAB section found\n");
+        KERROR("elf", "no SHT_SYMTAB section found");
         free(shstrtab_copy);
         free(shdrs_copy);
         return false;
     }
     if (!strtab_shdr) {
-        kprintf("elf: symtab sh_link does not point to a valid strtab\n");
+        KERROR("elf", "symtab sh_link does not point to a valid strtab");
         free(shstrtab_copy);
         free(shdrs_copy);
         return false;
@@ -195,7 +197,7 @@ bool elf_image_load(elf_image_t *img, const void *elf_data) {
     uint32_t sym_count = (uint32_t)(symtab_shdr->sh_size / sizeof(Elf64_Sym));
     Elf64_Sym *symtab_copy = malloc(symtab_shdr->sh_size);
     if (!symtab_copy) {
-        kprintf("elf: out of memory for symtab\n");
+        KERROR("elf", "out of memory for symtab");
         free(shstrtab_copy);
         free(shdrs_copy);
         return false;
@@ -207,7 +209,7 @@ bool elf_image_load(elf_image_t *img, const void *elf_data) {
     /* Copy strtab */
     char *strtab_copy = malloc(strtab_shdr->sh_size);
     if (!strtab_copy) {
-        kprintf("elf: out of memory for strtab\n");
+        KERROR("elf", "out of memory for strtab");
         free(symtab_copy);
         free(shstrtab_copy);
         free(shdrs_copy);
@@ -231,8 +233,8 @@ bool elf_image_load(elf_image_t *img, const void *elf_data) {
 
     build_sorted_index(img);
 
-    kprintf("elf: loaded %u symbols, %u sections, %u indexed\n",
-            sym_count, shnum, img->sorted_count);
+    KINFO("elf", "loaded %u symbols, %u sections, %u indexed",
+          sym_count, shnum, img->sorted_count);
     return true;
 }
 
@@ -297,14 +299,24 @@ const Elf64_Shdr *elf_sym_section(const elf_image_t *img,
     return &img->shdrs[idx];
 }
 
+void elf_image_free(elf_image_t *img) {
+    if (!img || !img->loaded) return;
+    free((void *)img->symtab);
+    free((void *)img->strtab);
+    free((void *)img->shdrs);
+    free((void *)img->shstrtab);
+    free(img->sorted_idx);
+    *img = (elf_image_t){ .loaded = false };
+}
+
 /* Parse and copy the kernel ELF image into kelf. Must be called after slab_init. */
 void __init elf_init(void) {
     if (kfile_request.response == NULL ||
         kfile_request.response->kernel_file == NULL) {
-        kprintf("elf: kernel file not provided by bootloader\n");
+        KWARN("elf", "kernel file not provided by bootloader — symbol resolution disabled");
         return;
     }
-    elf_image_load(&kelf, kfile_request.response->kernel_file->address);
+    elf_image_load((elf_image_t *)&kelf, kfile_request.response->kernel_file->address);
 }
 
 const char *kernel_cmdline(void) {

@@ -42,6 +42,10 @@ void _printf_wrap_free(void* ptr, size_t size) {
 #define COM1 0x3F8
 
 /* Initialize flanterm */
+struct flanterm_context *printf_get_context(void) {
+    return context;
+}
+
 void __init printf_init(void) {
 	/* Enable DLAB (Divisor Latch Access Bit) */
 	outportb(COM1 + 3, 0x80);

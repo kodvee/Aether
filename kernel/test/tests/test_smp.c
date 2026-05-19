@@ -7,9 +7,6 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-/* lapic_initialized is set by lapic_init() */
-extern bool lapic_initialized;
-
 /* coreCount is set by smp_init() */
 extern uint64_t coreCount;
 
@@ -37,15 +34,12 @@ KTEST("smp-core-count", "smp",
 /* ------------------------------------------------------------------ */
 
 static void test_smp_irq_array(ktest_ctx_t *ctx) {
-    /* The IRQ dispatch array must be non-NULL after idt_init */
-    KT_ASSERT_NONNULL(irqs);
+    /* vector 32 is the LAPIC timer — check it is installed */
+    KT_CHECK(irq_get(32) != NULL);
 
-    /* irqs[0] (vector 32) is the LAPIC timer - check it is installed */
-    KT_CHECK(irqs[0] != NULL);
-
-    /* High-numbered slots (well above any system handler) must be NULL */
-    KT_CHECK_EQ((uintptr_t)irqs[100], (uintptr_t)NULL);
-    KT_CHECK_EQ((uintptr_t)irqs[IRQ_COUNT - 1], (uintptr_t)NULL);
+    /* High-numbered vectors (well above any system handler) must be NULL */
+    KT_CHECK_EQ((uintptr_t)irq_get(132), (uintptr_t)NULL);
+    KT_CHECK_EQ((uintptr_t)irq_get(32 + IRQ_COUNT - 1), (uintptr_t)NULL);
 }
 
 KTEST("smp-irq-array", "smp",
@@ -67,10 +61,10 @@ static void test_smp_irq_install(ktest_ctx_t *ctx) {
     KT_ASSERT(vec >= 32 && vec < 255);
 
     irq_install(_test_ipi_handler, vec);
-    KT_CHECK_EQ((uintptr_t)irqs[vec - 32], (uintptr_t)_test_ipi_handler);
+    KT_CHECK_EQ((uintptr_t)irq_get(vec), (uintptr_t)_test_ipi_handler);
 
     /* Clean up: remove the handler */
-    irqs[vec - 32] = NULL;
+    irq_uninstall(vec);
 }
 
 KTEST("smp-irq-install", "smp",

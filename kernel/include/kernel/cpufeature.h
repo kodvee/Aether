@@ -70,3 +70,5 @@ extern uint64_t cpu_features;
 
 #define cpu_has_feature(FEATURE) (cpu_features & FEATURE)
 #define get_cpu_feature_value(feature) (cpu_has_feature(feature) ? 1 : 0)
+
+void cpu_feature_init(void);

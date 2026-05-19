@@ -220,3 +220,4 @@ extern uint64_t lapic_address;
 
 struct acpi_common_header* acpi_find_table(char t_sig[static 4]);
 bool acpi_exists(char t_sig[static 4]);
+void acpi_init(void);

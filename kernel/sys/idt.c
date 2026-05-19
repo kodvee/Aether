@@ -9,13 +9,11 @@
 #include <kernel/int.h>
 #include <stdint.h>
 #include <stddef.h>
-#include <kernel/kprintf.h>
-#include <kernel/elf.h>
 #include <kernel/spinlock.h>
 #include <kernel/mmu.h>
-#include <kernel/cpu.h>
 #include <kernel/macros.h>
 #include <kernel/panic.h>
+#include <kernel/kprintf.h>
 
 static struct idt_pointer idtp;
 static idt_entry_t idt[256];
@@ -71,16 +69,24 @@ void idt_reload(void) {
 
 void irq_install(irq_t irq, int index) {
 	irqs[index - 32] = irq;
-	const char *irq_sym = NULL;
-	elf_sym_by_addr(&kelf, (uintptr_t)irqs[index - 32], &irq_sym);
-	kprintf("irq: Install IRQ %d at %p [%s]\n",
-	        index - 32, (void *)(uintptr_t)irqs[index - 32],
-	        irq_sym ? irq_sym : "???");
+	KINFO("irq", "vector %d → %p", index, (void *)(uintptr_t)irqs[index - 32]);
+}
+
+irq_t irq_get(int vector) {
+	if (vector < 32 || vector >= 32 + IRQ_COUNT) return NULL;
+	return irqs[vector - 32];
+}
+
+void irq_uninstall(int vector) {
+	if (vector < 32 || vector >= 32 + IRQ_COUNT) return;
+	irqs[vector - 32] = NULL;
 }
 
 static void _exception(struct regs *r, const char *description) {
 	if ((r->cs & 0x3) == 0)
 		EXCEPTION_PANIC("cpu", description, r);
+	/* TODO: deliver signal to thread (SIGFPE, SIGILL, etc.) once the
+	 * process model exists. For now user-mode exceptions are dropped. */
 }
 
 #define EXC(i, n) case i: _exception(r, n); break;

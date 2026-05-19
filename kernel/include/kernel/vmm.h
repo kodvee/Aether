@@ -2,7 +2,17 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include <limine.h>
+#include <kernel/pmm.h>
+
+/*
+ * VMM invariants:
+ *   - vmm_init() must be called after pmm_init().
+ *   - mmu_map_page / mmu_unmap_page are NOT internally synchronized.
+ *     Callers that may race on the same pagemap must hold an external lock.
+ *   - All virtual and physical addresses must be page-aligned (PAGE_SIZE).
+ *   - mmu_kernel_pagemap is read-only after vmm_init(); it must not be
+ *     reassigned by any caller outside vmm.c.
+ */
 
 typedef uint64_t pagemap_t;
 
@@ -20,10 +30,7 @@ typedef uint64_t pagemap_t;
 #define PTE_LARGER_PAGE   ((uint64_t)1 << 6)
 #define PTE_NX            ((uint64_t)1 << 63)
 
-extern volatile struct limine_hhdm_request hhdm_request;
 extern pagemap_t *mmu_kernel_pagemap;
-
-#define HHDM_HIGHER_HALF (hhdm_request.response->offset)
 
 void       vmm_init(void);
 void       mmu_map_page(pagemap_t *pagemap, uintptr_t virt, uintptr_t phys, uint64_t flags);

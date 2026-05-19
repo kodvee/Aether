@@ -17,7 +17,7 @@
 #include <kernel/mmu.h>
 #include <kernel/spinlock.h>
 #include <kernel/macros.h>
-#include <kernel/kprintf.h>
+#include <kernel/panic.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -85,7 +85,7 @@ static struct slab_cache *cache_for(size_t size) {
 /* -- Slab page management ----------------------------------------------- */
 
 static struct slab_page *slab_new_page(struct slab_cache *cache) {
-    /* Called with cache->lock held */
+    KERNEL_ASSERT(spinlock_is_held(&cache->lock));
     uintptr_t frame = mmu_request_frame();
     struct slab_page *pg = (struct slab_page *)(frame + HHDM_HIGHER_HALF);
 
@@ -196,8 +196,7 @@ void free(void *addr) {
         return;
     }
 
-    kprintf("slab: free(%p): unrecognised page magic %#x - double-free or bad pointer?\n",
-            addr, magic);
+    SUBSYS_PANIC("slab", "free: corrupt page magic — double-free or bad pointer");
 }
 
 void *realloc(void *addr, size_t new_size) {
@@ -238,7 +237,7 @@ void *realloc(void *addr, size_t new_size) {
         return newp;
     }
 
-    return NULL;
+    SUBSYS_PANIC("slab", "realloc: corrupt page magic — double-free or bad pointer");
 }
 
 /* -- Initialise all caches ---------------------------------------------- */
@@ -252,7 +251,7 @@ void __init slab_init(void) {
         bool s = spinlock_acquire(&caches[i].lock);
         slab_new_page(&caches[i]);
         spinlock_release(&caches[i].lock, s);
-        kprintf("slab: cache[%lu] obj_size=%lu cap=%u\n",
-                i, caches[i].obj_size, caches[i].pages->capacity);
+        KINFO("slab", "cache[%zu] obj_size=%zu cap=%u",
+              i, caches[i].obj_size, caches[i].pages->capacity);
     }
 }

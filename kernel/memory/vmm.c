@@ -88,9 +88,17 @@ void __init vmm_init(void) {
     mmu_kernel_pagemap = (pagemap_t *)(mmu_request_frame() + HHDM_HIGHER_HALF);
     __builtin_memset(mmu_kernel_pagemap, 0, PAGE_SIZE);
 
-    /* Map all physical memory into HHDM */
+    /* Map RAM and bootloader-managed regions into HHDM.
+     * Skip BAD_MEMORY entirely. Skip RESERVED entries larger than 512 MiB —
+     * those are typically large 64-bit MMIO holes; small RESERVED regions
+     * (BIOS area, ACPI tables, etc.) must be mapped so the kernel can read
+     * them after switching to its own page tables. */
     for (uint64_t i = 0; i < resp->entry_count; i++) {
         struct limine_memmap_entry *e = resp->entries[i];
+        if (e->type == LIMINE_MEMMAP_BAD_MEMORY)
+            continue;
+        if (e->type == LIMINE_MEMMAP_RESERVED && e->length > (512ULL * 1024 * 1024))
+            continue;
         for (uint64_t page = e->base; page < e->base + e->length; page += PAGE_SIZE)
             mmu_map_page(mmu_kernel_pagemap,
                          page + HHDM_HIGHER_HALF, page,
@@ -108,12 +116,10 @@ void __init vmm_init(void) {
                      kaddr->physical_base + (p - kaddr->virtual_base),
                      PTE_PRESENT | PTE_NX);
 
-    /* ISR stubs live in .data (int.S line 105: .section .data), so this
-     * section cannot be marked NX until they are moved to .text.       */
     for (uintptr_t p = (uintptr_t)data_start; p < (uintptr_t)data_end; p += PAGE_SIZE)
         mmu_map_page(mmu_kernel_pagemap, p,
                      kaddr->physical_base + (p - kaddr->virtual_base),
-                     PTE_PRESENT | PTE_WRITABLE);
+                     PTE_PRESENT | PTE_WRITABLE | PTE_NX);
 
     mmu_switch_pagemap(mmu_kernel_pagemap);
     kprintf("vmm: kernel pagemap active\n");

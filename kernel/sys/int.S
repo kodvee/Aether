@@ -102,14 +102,16 @@ _isr\index:
     .quad _isr\index
 .endm
 
-.section .data
-
+/* ISR stub functions — must live in .text (executable, not writable). */
+.section .text
 .irpc i, 0123456789abcdef
 .irpc j, 0123456789abcdef
     ISR \i\j
 .endr
 .endr
 
+/* isrs[] — read-only table of function pointers; lives in .rodata. */
+.section .rodata
 .global isrs
 .align 8
 isrs:

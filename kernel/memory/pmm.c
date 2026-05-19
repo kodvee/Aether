@@ -24,6 +24,8 @@ volatile struct limine_hhdm_request hhdm_request = {
 
 static spinlock_t pmm_lock = SPINLOCK_ZERO;
 
+uint64_t hhdm_offset = 0;
+
 static uint8_t  *bitmap    = NULL;
 static uint64_t  nframes   = 0;
 static uint64_t  lastFrame = 0;
@@ -100,7 +102,6 @@ uintptr_t mmu_request_frames(uint64_t num) {
         }
     }
     spinlock_release(&pmm_lock, s);
-    kprintf("pmm: out of contiguous memory (%lu frames)\n", num);
     SUBSYS_PANIC("pmm", "Out of contiguous physical memory");
 }
 
@@ -127,15 +128,16 @@ uint64_t clean_reclaimable_memory(void) {
     if (!resp || !resp->entry_count) SUBSYS_PANIC("pmm", "Memory map unavailable during reclaim");
 
     uint64_t cleared = 0;
+    bool s = spinlock_acquire(&pmm_lock);
     for (uint64_t i = 0; i < resp->entry_count; i++) {
         struct limine_memmap_entry *e = resp->entries[i];
         if (e->type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE) continue;
         for (uint64_t page = e->base; page < e->base + e->length; page += PAGE_SIZE)
-            mmu_frame_clear(page);
+            _pmm_clear(page / PAGE_SIZE);
         cleared += e->length;
-        kprintf("pmm: reclaimed %p-%p (%lu bytes)\n",
-                (void *)e->base, (void *)(e->base + e->length), e->length);
     }
+    spinlock_release(&pmm_lock, s);
+    KINFO("pmm", "reclaimed %lu bytes of bootloader memory", cleared);
     return cleared;
 }
 
@@ -145,10 +147,16 @@ void __init pmm_init(void) {
     struct limine_memmap_response *resp = memmap_request.response;
     if (!resp || !resp->entry_count) SUBSYS_PANIC("pmm", "No memory map from bootloader");
 
-    /* Total addressable memory span */
+    if (!hhdm_request.response) SUBSYS_PANIC("pmm", "No HHDM response from bootloader");
+    hhdm_offset = hhdm_request.response->offset;
+
+    /* Highest address of usable RAM — skip reserved/device regions so the
+     * bitmap covers only actual RAM and not huge PCIe/MMIO holes. */
     uint64_t top = 0;
     for (uint64_t i = 0; i < resp->entry_count; i++) {
         struct limine_memmap_entry *e = resp->entries[i];
+        if (e->type == LIMINE_MEMMAP_RESERVED || e->type == LIMINE_MEMMAP_BAD_MEMORY)
+            continue;
         uint64_t end = e->base + e->length;
         if (end > top) top = end;
     }
