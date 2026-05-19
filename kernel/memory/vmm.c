@@ -57,7 +57,7 @@ void mmu_unmap_page(pagemap_t *pagemap, uintptr_t virt) {
 }
 
 /*
- * vmm_new_pagemap — allocate a fresh PML4 and copy the kernel's higher-half
+ * vmm_new_pagemap - allocate a fresh PML4 and copy the kernel's higher-half
  * entries (indices 256–511) so the new pagemap shares kernel mappings.
  * Used by the scheduler to create per-process address spaces.
  */

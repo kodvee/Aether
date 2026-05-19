@@ -32,6 +32,13 @@ SECTIONS
     .rodata : {
         *(.rodata .rodata.*)
     } :rodata
+
+    /* Kernel test registry - auto-discovered by ktest runner */
+    .ktest ALIGN(8) : {
+        PROVIDE_HIDDEN(__ktest_start = .);
+        *(.ktest)
+        PROVIDE_HIDDEN(__ktest_end = .);
+    } :rodata
     rodata_end = .;
  
     . = ALIGN(0x1000);

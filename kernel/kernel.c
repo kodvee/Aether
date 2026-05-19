@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <kernel/hpet.h>
 #include <kernel/apic.h>
+#include <kernel/ktest.h>
 
 extern void debug_printf_init(void);
 extern void gdt_init(void);
@@ -109,6 +110,11 @@ void _start(void) {
 
 	/* Initialize multicore */
 	smp_init();
+
+#ifdef KTEST_ENABLED
+	/* Run the kernel test suite (discovers tests from .ktest linker section) */
+	ktest_run();
+#endif
 
 	/* All done */
 	asm volatile ("1: hlt; jmp 1b" ::: "memory");

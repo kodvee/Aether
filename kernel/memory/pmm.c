@@ -9,7 +9,7 @@
 #include <stdbool.h>
 #include <limine.h>
 
-/* Limine requests — memmap is non-static so vmm.c can read it too */
+/* Limine requests - memmap is non-static so vmm.c can read it too */
 __attribute__((used, section(".requests")))
 volatile struct limine_memmap_request memmap_request = {
     .id       = LIMINE_MEMMAP_REQUEST,
@@ -61,7 +61,7 @@ void mmu_frame_clear(uintptr_t addr) {
 }
 
 /*
- * mmu_request_frame — atomically test-and-set one free frame.
+ * mmu_request_frame - atomically test-and-set one free frame.
  * lastFrame wraps modulo nframes so freed frames are eventually reused
  * without rescanning from 0 on every allocation.
  */
@@ -80,7 +80,7 @@ uintptr_t mmu_request_frame(void) {
     SUBSYS_PANIC("pmm", "Out of physical memory");
 }
 
-/* mmu_request_frames — find num physically contiguous free frames. */
+/* mmu_request_frames - find num physically contiguous free frames. */
 uintptr_t mmu_request_frames(uint64_t num) {
     if (num == 0) return 0;
     bool s = spinlock_acquire(&pmm_lock);
@@ -105,7 +105,7 @@ uintptr_t mmu_request_frames(uint64_t num) {
 }
 
 /*
- * mmu_free_frames — release pages frames back to the pool.
+ * mmu_free_frames - release pages frames back to the pool.
  * addr is the PHYSICAL base address; pages is the count.
  * Operates under a single lock acquisition to avoid the nested-lock
  * deadlock the old implementation had (mmu_free_frames → mmu_frame_clear

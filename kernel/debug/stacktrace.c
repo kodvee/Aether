@@ -1,5 +1,5 @@
 /**
- * stacktrace.c — stack frame walker and symbol resolver.
+ * stacktrace.c - stack frame walker and symbol resolver.
  *
  * Uses the ELF subsystem (kelf) as the sole source of symbol information.
  * All paths are allocation-free and safe to call from interrupt or panic
@@ -91,7 +91,7 @@ void stacktrace_print_regs(struct regs *r) {
     if (r != NULL) {
         /*
          * The interrupt frame gives us the exact instruction and frame pointer
-         * at the moment of the fault — use them directly so the trace starts
+         * at the moment of the fault - use them directly so the trace starts
          * at the real fault site, not inside the panic handler.
          */
         stacktrace_print_from(r->rip, r->rbp);

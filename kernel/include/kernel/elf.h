@@ -12,7 +12,7 @@
 #define SHT_DYNSYM  11
 
 /*
- * elf_image_t — in-memory snapshot of a loaded ELF kernel image.
+ * elf_image_t - in-memory snapshot of a loaded ELF kernel image.
  *
  * All pointer members point into heap copies made at load time; they remain
  * valid after clean_reclaimable_memory() reclaims the original Limine pages.
@@ -40,30 +40,33 @@ typedef struct {
 extern elf_image_t kelf;
 
 /*
- * elf_init — load the kernel's own ELF image into kelf.
+ * elf_init - load the kernel's own ELF image into kelf.
  * Requires the slab allocator to be ready. Marked __init; must be called
  * before clean_reclaimable_memory() reclaims Limine pages.
  */
 void elf_init(void);
 
+/* Returns the Limine-provided kernel cmdline, or NULL if unavailable. */
+const char *kernel_cmdline(void);
+
 /* ---------- primary API ---------- */
 
 /*
- * elf_image_load — parse elf_data and populate img.
+ * elf_image_load - parse elf_data and populate img.
  * Allocates heap copies of all needed sections; safe after reclaim.
  * Returns true on success. img->loaded is set accordingly.
  */
 bool elf_image_load(elf_image_t *img, const void *elf_data);
 
 /*
- * elf_sym_by_addr — find the best-matching symbol for a virtual address.
+ * elf_sym_by_addr - find the best-matching symbol for a virtual address.
  *
  * "Best matching" means the symbol whose st_value is the largest value
  * that is still <= addr.  Prefers symbols that contain addr (st_size > 0
  * and addr < st_value + st_size) over mere "closest lower" matches.
  *
  * If name_out is non-NULL, *name_out is set to the symbol's name string
- * (points into img->strtab — no allocation).
+ * (points into img->strtab - no allocation).
  *
  * Returns NULL if img is not loaded or no symbol is at or below addr.
  * No dynamic allocation; safe in panic context.
@@ -72,14 +75,14 @@ const Elf64_Sym *elf_sym_by_addr(const elf_image_t *img, uintptr_t addr,
                                   const char **name_out);
 
 /*
- * elf_sym_by_name — linear scan for exact name match.
+ * elf_sym_by_name - linear scan for exact name match.
  * Returns NULL if not found.
  * No dynamic allocation; safe in panic context.
  */
 const Elf64_Sym *elf_sym_by_name(const elf_image_t *img, const char *name);
 
 /*
- * elf_sym_section — return the section header that contains sym.
+ * elf_sym_section - return the section header that contains sym.
  * Returns NULL if the symbol's st_shndx is undefined, absolute, or
  * out of range.
  */

@@ -35,7 +35,7 @@ typedef enum {
 } log_severity_t;
 
 /* ------------------------------------------------------------------ */
-/* Core panic entry point — do not call directly, use the macros        */
+/* Core panic entry point - do not call directly, use the macros        */
 /* ------------------------------------------------------------------ */
 
 __attribute__((noreturn))
@@ -53,12 +53,12 @@ void klog(log_severity_t sev, const char *subsys, const char *fmt, ...);
 /* Panic macros                                                         */
 /* ------------------------------------------------------------------ */
 
-/* Generic panic — no register context */
+/* Generic panic - no register context */
 #define PANIC(msg) \
     _kpanic_impl(PANIC_GENERIC, "kernel", __FILE__, __LINE__, (msg), \
                  (struct regs *)0, (uintptr_t)0, (uint64_t)0)
 
-/* Subsystem-tagged panic — no register context */
+/* Subsystem-tagged panic - no register context */
 #define SUBSYS_PANIC(subsys, msg) \
     _kpanic_impl(PANIC_GENERIC, (subsys), __FILE__, __LINE__, (msg), \
                  (struct regs *)0, (uintptr_t)0, (uint64_t)0)
@@ -68,12 +68,12 @@ void klog(log_severity_t sev, const char *subsys, const char *fmt, ...);
     _kpanic_impl(PANIC_GENERIC, "kernel", __FILE__, __LINE__, (msg), \
                  (r), (uintptr_t)0, (uint64_t)0)
 
-/* CPU exception (non-fault — no meaningful fault address) */
+/* CPU exception (non-fault - no meaningful fault address) */
 #define EXCEPTION_PANIC(subsys, msg, r) \
     _kpanic_impl(PANIC_CPU_EXCEPTION, (subsys), __FILE__, __LINE__, (msg), \
                  (r), (uintptr_t)0, (r)->err_code)
 
-/* Page fault — CR2 carries the faulting virtual address */
+/* Page fault - CR2 carries the faulting virtual address */
 #define PAGE_FAULT_PANIC(r) \
     _kpanic_impl(PANIC_PAGE_FAULT, "cpu", __FILE__, __LINE__, "page fault", \
                  (r), (r)->cr2, (r)->err_code)
@@ -83,7 +83,7 @@ void klog(log_severity_t sev, const char *subsys, const char *fmt, ...);
     _kpanic_impl(PANIC_DOUBLE_FAULT, "cpu", __FILE__, __LINE__, "double fault", \
                  (r), (uintptr_t)0, (r)->err_code)
 
-/* Assertion — evaluated at runtime, fires on failure */
+/* Assertion - evaluated at runtime, fires on failure */
 #define KERNEL_ASSERT(cond) \
     do { \
         if (__builtin_expect(!(cond), 0)) \
@@ -92,7 +92,7 @@ void klog(log_severity_t sev, const char *subsys, const char *fmt, ...);
                          (struct regs *)0, (uintptr_t)0, (uint64_t)0); \
     } while (0)
 
-/* Bug — unreachable code path that was reached */
+/* Bug - unreachable code path that was reached */
 #define KERNEL_BUG(msg) \
     do { \
         _kpanic_impl(PANIC_BUG, "kernel", __FILE__, __LINE__, "BUG: " msg, \

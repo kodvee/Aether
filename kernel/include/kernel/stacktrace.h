@@ -19,7 +19,7 @@ typedef struct stack_frame {
 struct regs;
 
 /*
- * stacktrace_print_from — core frame walker.
+ * stacktrace_print_from - core frame walker.
  *
  * Prints a numbered backtrace beginning at @rip, then following the frame
  * chain rooted at @rbp.  Symbol names are resolved through the global kelf
@@ -28,13 +28,13 @@ struct regs;
 void stacktrace_print_from(uintptr_t rip, uintptr_t rbp);
 
 /*
- * stacktrace_print — capture the current frame pointer and walk from the
+ * stacktrace_print - capture the current frame pointer and walk from the
  * call site.  The function's own frame is skipped so frame #0 is the caller.
  */
 void stacktrace_print(void);
 
 /*
- * stacktrace_print_regs — walk starting from the RIP/RBP saved in an
+ * stacktrace_print_regs - walk starting from the RIP/RBP saved in an
  * interrupt register context.  Falls back to stacktrace_print when r is NULL.
  */
 void stacktrace_print_regs(struct regs *r);

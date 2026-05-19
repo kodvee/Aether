@@ -1,5 +1,5 @@
 /**
- * panic.c — unified kernel diagnostics and panic subsystem.
+ * panic.c - unified kernel diagnostics and panic subsystem.
  *
  * Stages on fatal entry:
  *   1. Disable interrupts, capture APIC ID via CPUID.
@@ -7,9 +7,9 @@
  *   3. SMP freeze: broadcast halt IPI to all other cores.
  *   4. Initialise serial independently (safe before printf_init).
  *   5. Depth-gated rendering:
- *        depth 1 — full render to framebuffer + serial.
- *        depth 2 — emergency serial-only (framebuffer state unreliable).
- *        depth ≥ 3 — halt immediately, system is too broken to render.
+ *        depth 1 - full render to framebuffer + serial.
+ *        depth 2 - emergency serial-only (framebuffer state unreliable).
+ *        depth ≥ 3 - halt immediately, system is too broken to render.
  *   6. Final halt loop.
  *
  * All paths are allocation-free and spinlock-free.  No kprintf is called;
@@ -31,18 +31,23 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdarg.h>
+#include <string.h>
 
-/* flanterm context — lives in printf.c */
+#ifdef KTEST_ENABLED
+#include <kernel/ktest.h>
+#endif
+
+/* flanterm context - lives in printf.c */
 extern struct flanterm_context *context;
 
-/* LAPIC IPI guard — set by lapic.c after lapic_init completes */
+/* LAPIC IPI guard - set by lapic.c after lapic_init completes */
 extern bool lapic_initialized;
 
-/* CPU info — populated by cpuinfo_init; may be NULL in early boot panics */
+/* CPU info - populated by cpuinfo_init; may be NULL in early boot panics */
 typedef struct { char *vendorId; char *cpuName; uint32_t coreCount; uint64_t cpuFeatures; } _cpu_info_t;
 extern _cpu_info_t *cpu_info;
 
-/* Total SMP core count — set by smp_init */
+/* Total SMP core count - set by smp_init */
 extern uint64_t coreCount;
 
 /* ------------------------------------------------------------------ */
@@ -58,7 +63,7 @@ static volatile uint32_t g_panic_owner = PANIC_NO_OWNER;
 static volatile uint32_t g_panic_depth = 0;
 
 /* ------------------------------------------------------------------ */
-/* Serial (COM1) helpers — polling, interrupt-free                      */
+/* Serial (COM1) helpers - polling, interrupt-free                      */
 /* ------------------------------------------------------------------ */
 
 #define COM1 0x3F8u
@@ -95,7 +100,7 @@ static void _serial_puts(const char *s) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Panic output — direct to framebuffer (no spinlock) + serial         */
+/* Panic output - direct to framebuffer (no spinlock) + serial         */
 /* ------------------------------------------------------------------ */
 
 /* g_serial_only: set to true when depth >= 2 (framebuffer unreliable) */
@@ -125,7 +130,7 @@ static void _panic_printf(const char *fmt, ...) {
 }
 
 /* ------------------------------------------------------------------ */
-/* APIC ID — CPUID leaf 1, no GS segment dependency                    */
+/* APIC ID - CPUID leaf 1, no GS segment dependency                    */
 /* ------------------------------------------------------------------ */
 
 static uint32_t _get_apic_id(void) {
@@ -135,7 +140,7 @@ static uint32_t _get_apic_id(void) {
 }
 
 /* ------------------------------------------------------------------ */
-/* SMP freeze — broadcast halt IPI to all other cores                  */
+/* SMP freeze - broadcast halt IPI to all other cores                  */
 /* ------------------------------------------------------------------ */
 
 static void _smp_freeze(void) {
@@ -277,7 +282,7 @@ static void _render_full(panic_category_t cat, const char *subsys,
                          uint64_t err_code, uint32_t apic_id,
                          uint32_t depth)
 {
-    /* Red screen via ANSI — framebuffer only */
+    /* Red screen via ANSI - framebuffer only */
     if (context) {
         static const char red_esc[] = "\033[0;41m\033[2J\033[H";
         flanterm_write(context, red_esc, sizeof(red_esc) - 1);
@@ -307,7 +312,7 @@ static void _render_full(panic_category_t cat, const char *subsys,
 
     /* CPU info (only if cpuinfo_init has run) */
     if (cpu_info && cpu_info->vendorId && cpu_info->cpuName) {
-        _panic_printf("CPU      : %s — %s  (%u cores active, %lu total)\n",
+        _panic_printf("CPU      : %s - %s  (%u cores active, %lu total)\n",
                       cpu_info->vendorId, cpu_info->cpuName,
                       cpu_info->coreCount, coreCount);
     }
@@ -328,7 +333,7 @@ static void _render_full(panic_category_t cat, const char *subsys,
               cat == PANIC_DOUBLE_FAULT)) {
         uint64_t vec = r->int_no;
         const char *exc = (vec < 32) ? g_exc_names[vec] : "unknown";
-        _panic_printf("Exception: #%lu — %s\n", vec, exc);
+        _panic_printf("Exception: #%lu - %s\n", vec, exc);
     }
 
     _panic_printf("Core     : APIC %u  (depth %u, %lu cores online)\n",
@@ -365,7 +370,7 @@ static void _render_full(panic_category_t cat, const char *subsys,
 }
 
 /* ------------------------------------------------------------------ */
-/* Emergency renderer (depth == 2) — serial only                        */
+/* Emergency renderer (depth == 2) - serial only                        */
 /* ------------------------------------------------------------------ */
 
 static void _render_emergency(panic_category_t cat, const char *subsys,
@@ -401,6 +406,45 @@ static void _render_emergency(panic_category_t cat, const char *subsys,
 }
 
 /* ------------------------------------------------------------------ */
+/* Expected-panic hook for the test framework                           */
+/* ------------------------------------------------------------------ */
+
+#ifdef KTEST_ENABLED
+static void _ktest_check_expected(const char *msg) {
+    volatile ktest_ctx_t *ctx = g_ktest_active_ctx;
+    if (!ctx || !ctx->expect_panic) return;
+
+    /* If a substring match is required, verify it */
+    if (ctx->expected_panic_msg && msg) {
+        if (!strstr(msg, ctx->expected_panic_msg)) return; /* mismatch → real panic */
+    }
+
+    /* Capture message into ctx */
+    const char *src = msg ? msg : "(panic)";
+    size_t i = 0;
+    while (src[i] && i + 1 < sizeof(ctx->caught_msg)) {
+        ((ktest_ctx_t *)ctx)->caught_msg[i] = src[i];
+        i++;
+    }
+    ((ktest_ctx_t *)ctx)->caught_msg[i] = '\0';
+
+    ((ktest_ctx_t *)ctx)->panic_caught = true;
+    ((ktest_ctx_t *)ctx)->expect_panic = false;
+    ((ktest_ctx_t *)ctx)->result       = KT_PANIC_EXPECTED;
+
+    /* Reset panic ownership so future panics (including nested expected ones) work */
+    __atomic_store_n((uint32_t *)&g_panic_owner, PANIC_NO_OWNER, __ATOMIC_SEQ_CST);
+    __atomic_store_n((uint32_t *)&g_panic_depth, 0u,             __ATOMIC_SEQ_CST);
+
+    /* Restore interrupts (we're about to leave _kpanic_impl via longjmp) */
+    asm volatile ("sti" ::: "memory");
+
+    __builtin_longjmp(((ktest_ctx_t *)ctx)->recovery_buf, 1);
+    __builtin_unreachable();
+}
+#endif
+
+/* ------------------------------------------------------------------ */
 /* Public entry point                                                   */
 /* ------------------------------------------------------------------ */
 
@@ -412,6 +456,11 @@ void _kpanic_impl(panic_category_t cat, const char *subsys,
     /* Step 1: Disable interrupts immediately */
     asm volatile ("cli" ::: "memory");
 
+#ifdef KTEST_ENABLED
+    /* If a test is expecting this panic, recover into it instead of halting */
+    _ktest_check_expected(msg);
+#endif
+
     /* Step 2: Identify ourselves */
     uint32_t my_id = _get_apic_id();
 
@@ -422,7 +471,7 @@ void _kpanic_impl(panic_category_t cat, const char *subsys,
         false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
 
     if (!owner && expected != my_id) {
-        /* Another CPU got there first — just halt */
+        /* Another CPU got there first - just halt */
         asm volatile ("1: hlt; jmp 1b" ::: "memory");
         __builtin_unreachable();
     }
@@ -433,7 +482,7 @@ void _kpanic_impl(panic_category_t cat, const char *subsys,
 
     if (depth >= 3u) {
         /* Too broken to render anything safely */
-        _serial_puts("\r\n!!! triple panic — halting immediately !!!\r\n");
+        _serial_puts("\r\n!!! triple panic - halting immediately !!!\r\n");
         asm volatile ("1: hlt; jmp 1b" ::: "memory");
         __builtin_unreachable();
     }

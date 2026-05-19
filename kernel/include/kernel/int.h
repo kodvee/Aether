@@ -26,7 +26,7 @@ struct idt_pointer {
 
 typedef struct regs* (*irq_t)(struct regs* r);
 
-#define IRQ_COUNT 2
+#define IRQ_COUNT 224   /* vectors 32–255 */
 extern irq_t *irqs;
 
 void idt_init(void);

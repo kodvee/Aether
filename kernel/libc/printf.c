@@ -102,7 +102,7 @@ void kprintf(const char* fmt, ...) {
 	if (context)
 		flanterm_write(context, buffer, length);
 
-	/* Serial: always — visible via QEMU -serial stdio from the very first kprintf */
+	/* Serial: always - visible via QEMU -serial stdio from the very first kprintf */
 	for (int i = 0; i < length; i++)
 		outportb(COM1, buffer[i]);
 

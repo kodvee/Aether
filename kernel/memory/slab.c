@@ -1,5 +1,5 @@
 /*
- * slab.c — kernel slab allocator
+ * slab.c - kernel slab allocator
  *
  * Small allocations (≤ SLAB_MAX_SIZE) come from per-size-class caches.
  * Each cache manages a linked list of 4 KiB pages; objects within a page
@@ -196,7 +196,7 @@ void free(void *addr) {
         return;
     }
 
-    kprintf("slab: free(%p): unrecognised page magic %#x — double-free or bad pointer?\n",
+    kprintf("slab: free(%p): unrecognised page magic %#x - double-free or bad pointer?\n",
             addr, magic);
 }
 
@@ -209,7 +209,7 @@ void *realloc(void *addr, size_t new_size) {
 
     if (magic == SLAB_MAGIC) {
         struct slab_page *pg = (struct slab_page *)page_base;
-        /* Still fits in the same slab slot — nothing to do. */
+        /* Still fits in the same slab slot - nothing to do. */
         if (new_size <= pg->cache->obj_size)
             return addr;
         /* Needs a larger slot or a large alloc. */
@@ -224,7 +224,7 @@ void *realloc(void *addr, size_t new_size) {
         struct large_hdr *hdr = (struct large_hdr *)page_base;
         size_t new_pages =
             (sizeof(struct large_hdr) + new_size + PAGE_SIZE - 1) / PAGE_SIZE;
-        /* Same page count — update the size field in-place. */
+        /* Same page count - update the size field in-place. */
         if (new_pages == hdr->pages) {
             hdr->size = new_size;
             return addr;

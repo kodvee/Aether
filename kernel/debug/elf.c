@@ -1,5 +1,5 @@
 /**
- * elf.c — ELF64 parsing and symbol resolution subsystem.
+ * elf.c - ELF64 parsing and symbol resolution subsystem.
  *
  * Parses the kernel's own ELF image (supplied by Limine via the kernel-file
  * request) at boot time, copies all symbol/section data to the heap so it
@@ -21,7 +21,7 @@
 #include <stdbool.h>
 #include <elf.h>
 
-/* Limine kernel-file request — filled before _start is called */
+/* Limine kernel-file request - filled before _start is called */
 __attribute__((used, section(".requests")))
 static volatile struct limine_kernel_file_request kfile_request = {
     .id = LIMINE_KERNEL_FILE_REQUEST,
@@ -61,7 +61,7 @@ static bool elf_validate(const Elf64_Ehdr *hdr) {
 /*
  * Build sorted_idx: indices into symtab, sorted ascending by st_value,
  * restricted to defined symbols with a non-zero address.  Uses insertion
- * sort — acceptable because kernel symbol counts are typically < 10 000.
+ * sort - acceptable because kernel symbol counts are typically < 10 000.
  */
 static void build_sorted_index(elf_image_t *img) {
     /* Count qualifying symbols */
@@ -291,7 +291,7 @@ const Elf64_Shdr *elf_sym_section(const elf_image_t *img,
                                    const Elf64_Sym *sym) {
     if (!img->loaded) return NULL;
     uint32_t idx = sym->st_shndx;
-    /* SHN_XINDEX: real index is in symtab[0].st_value — not supported here */
+    /* SHN_XINDEX: real index is in symtab[0].st_value - not supported here */
     if (idx == SHN_UNDEF || idx >= SHN_LORESERVE) return NULL;
     if (idx >= img->shdr_count) return NULL;
     return &img->shdrs[idx];
@@ -305,4 +305,10 @@ void __init elf_init(void) {
         return;
     }
     elf_image_load(&kelf, kfile_request.response->kernel_file->address);
+}
+
+const char *kernel_cmdline(void) {
+    if (!kfile_request.response || !kfile_request.response->kernel_file)
+        return NULL;
+    return kfile_request.response->kernel_file->cmdline;
 }

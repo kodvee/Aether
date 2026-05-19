@@ -32,6 +32,26 @@ int strcmp(const char* s1, const char* s2) {
 	return *(const unsigned char*)s1 - *(const unsigned char*)s2;
 }
 
+/* Compare up to n bytes */
+int strncmp(const char* s1, const char* s2, size_t n) {
+	while (n && *s1 && (*s1 == *s2)) {
+		s1++; s2++; n--;
+	}
+	if (!n) return 0;
+	return *(const unsigned char*)s1 - *(const unsigned char*)s2;
+}
+
+/* Find needle in haystack */
+const char* strstr(const char* haystack, const char* needle) {
+	if (!*needle) return haystack;
+	size_t nlen = strlen(needle);
+	for (; *haystack; haystack++) {
+		if (*haystack == *needle && strncmp(haystack, needle, nlen) == 0)
+			return haystack;
+	}
+	return NULL;
+}
+
 /* Trim a string */
 char* strctrim(const char* s, char c) {
 	size_t len = strlen(s);
