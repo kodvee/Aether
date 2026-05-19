@@ -294,17 +294,28 @@ Tests communicate results to CI through the QEMU `isa-debug-exit` device: exit c
 
 ## 9. Userspace ABI
 
-The userspace ABI follows Unix/POSIX conventions. This is a behavioral and compatibility constraint, not an internal design constraint.
+### Compatibility Goal
 
-The intended ABI surface:
+The long-term goal is to run unmodified Linux x86_64 binaries and libraries (musl, glibc) without a translation layer. This is a hard design constraint that must be honoured from the start — retrofitting ABI compatibility after a divergent interface is built is not feasible.
 
-- **Syscall interface** using the x86_64 System V ABI calling convention, with a Linux-compatible syscall numbering where practical.
+This means:
+
+- **Syscall numbers match Linux exactly** (x86_64 — `read=0`, `write=1`, `open=2`, ...).
+- **Syscall entry via `SYSCALL`/`SYSRET`**, not `INT 0x80`.
+- **All structs exposed to userspace** (`stat`, `timespec`, `iovec`, `sigaction`, signal numbers, `mmap`/`open` flag values, `errno` values) must match Linux layouts byte-for-byte.
+- **Dynamic linking must work**: the ELF loader must handle `PT_INTERP` so that `ld-linux.so` or musl's dynamic linker can be loaded. Without this only static binaries run.
+
+The minimum syscall surface to run a musl-linked binary is approximately: `read`, `write`, `open`, `close`, `exit`, `exit_group`, `mmap`, `munmap`, `mprotect`, `brk`, `fstat`, `ioctl`, `getpid`, `uname`, `writev`, `arch_prctl` (TLS setup).
+
+The kernel's internal design (scheduler, VFS, memory manager) is unconstrained. The ABI surface is the contract; everything below it is free.
+
+### ABI Surface
+
+- **Syscall interface** using the x86_64 System V ABI calling convention, Linux-compatible syscall numbering.
 - **Process lifecycle**: `fork`, `exec`, `exit`, `wait` semantics.
-- **File descriptor model** over a virtual filesystem abstraction. Everything that can be represented as a file should be accessible through file descriptors.
-- **Signal delivery** with standard Unix signal semantics.
+- **File descriptor model** over a virtual filesystem abstraction.
+- **Signal delivery** with standard Unix signal semantics and `sigaction` layout.
 - **Memory mapping** via `mmap`/`munmap` with `MAP_ANONYMOUS` and file-backed mappings.
-
-The internal implementations of the scheduler, memory manager, VFS, and IPC do not need to resemble any existing kernel. The ABI is the contract; the implementation is free.
 
 ---
 
