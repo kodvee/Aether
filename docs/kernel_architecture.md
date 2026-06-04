@@ -59,9 +59,10 @@ The design philosophy and long-term goals live in [README.md](../README.md); thi
 | Process model | `sys/process.c` | Stable | `<kernel/scheduler.h>` |
 | Syscall ABI | `sys/syscall.c`, `sys/syscalls.c` | Stable | `<kernel/syscall.h>` |
 | ELF loader | `sys/elf_loader.c` | Stable | `<kernel/elf_loader.h>` |
-| VFS core | `fs/vfs.c` | In progress | `<kernel/vfs.h>` |
-| tmpfs | `fs/tmpfs.c` | In progress | `<kernel/vfs.h>` |
-| devfs | `fs/devfs.c` | In progress | `<kernel/vfs.h>` |
+| VFS core | `fs/vfs.c` | Stable | `<kernel/vfs.h>` |
+| tmpfs | `fs/tmpfs.c` | Stable | `<kernel/vfs.h>` |
+| devfs | `fs/devfs.c` | Stable | `<kernel/vfs.h>` |
+| Pipes | `fs/pipe.c` | Stable | `<kernel/vfs.h>` |
 
 ---
 
@@ -132,7 +133,7 @@ Subsystems are layered. A lower layer must never call upward into a higher layer
 [ Process model / Syscall ABI / ELF loader ]
           |
           v
-[ VFS / Drivers ]   <- NOT YET IMPLEMENTED
+[ VFS / tmpfs / devfs / pipes ]   <- stable; disk driver + ext2 not yet implemented
 ```
 
 **Consequence:** malloc is not available until after `slab_init()`. Any subsystem that calls `malloc` must be initialised after slab. The IDT allocation is the first post-slab consumer.
@@ -932,20 +933,67 @@ All prerequisites for the base scheduler are met. The scheduler is implemented a
 
 The following subsystems and features are explicitly absent from the current codebase.
 
+### Process lifecycle (hard blocker — nothing else in this section matters until these land)
+
 | Feature | Notes |
 |---------|-------|
-| VFS — Stage 3+ | Remaining: `stat` syscall on paths, `getdents`, `pipe`, `dup`/`dup2`, ext2/disk-backed fs |
-| Signal delivery | Blocks: kill, sigaction, POSIX process control |
-| `fork` / `exec` | Blocks: shell, conventional process lifecycle |
-| Dynamic ELF loading | Requires PT_INTERP support and dynamic linker; only static binaries work today |
-| Monotonic clock API | HPET counter readable; no clock_gettime syscall wired yet |
-| `kprintf` re-entrancy / locking | Currently unsafe in interrupt context |
-| Guard pages on kernel stacks | Needs VMM support for intentionally unmapped pages |
-| Mutex / semaphore | thread_block() exists -- the sleeping-lock API can now be built on top |
-| Per-thread CPU time accounting | Tick hook exists -- needs a per-thread counter in thread_t |
-| SMP load balancing | Scheduler exists -- needs work-stealing or push policy |
-| MLFQ / CFS scheduling | Round-robin is sufficient until user-process workloads justify it |
-| `interrupt_depth` tracking | Field exists in core_t but ISR stubs do not increment it |
-| Drivers | Driver model not designed; will follow VFS |
+| `fork` (58) / `clone` (56) | No process spawning; all userspace is single-process; implement with physical page copy first, CoW later |
+| `execve` (59) / `execveat` (322) | VFS and `elf_load_user` exist; wiring them together with argv/envp/auxv setup is the remaining work |
+| `wait4` (61) / `waitpid` | Requires `exit_status` field on `process_t` and a per-process dead-children wait queue |
+| Parent-child PID tracking | `getppid` always returns 1; no `process_t.parent` field |
+
+### Signals
+
+| Feature | Notes |
+|---------|-------|
+| Signal delivery | Per-thread pending/blocked bitmasks; frame build on user stack; `rt_sigreturn` (15) for handler return; minimum needed: SIGSEGV (user fault), SIGCHLD (child exit), SIGPIPE (broken pipe write) |
+| `kill` syscall (62) | Trivial once delivery machinery exists |
+| User-mode exception handling | Faults in ring-3 currently log a TODO and hang; need to deliver SIGSEGV / SIGBUS instead |
+| `interrupt_depth` tracking | Field exists in `core_t` but ISR stubs do not increment it; needed for context assertions |
+
+### Synchronization
+
+| Feature | Notes |
+|---------|-------|
+| `futex` WAIT / WAKE (202) | Currently returns `ENOSYS`; musl threading requires at minimum `FUTEX_WAIT` and `FUTEX_WAKE`; implement with a VA-keyed hash table of wait queues |
+| Mutex / semaphore | `thread_block()` exists and is the right primitive; the sleeping-lock API can be built directly on top |
+
+### Storage and filesystems
+
+| Feature | Notes |
+|---------|-------|
+| Storage driver | No disk access; virtio-blk (for QEMU) or AHCI needed; alternatively virtio-9p maps a host directory with no disk format required |
+| ext2 filesystem | Block device + block cache abstraction needed first; ext2 is the natural first on-disk format |
+| Dynamic ELF loading | PT_INTERP detection and dynamic linker loading; required to run dynamically-linked binaries |
+
+### Drivers and hardware
+
+| Feature | Notes |
+|---------|-------|
+| Keyboard driver | PS/2 IRQ 1, scancode-to-ASCII; required for interactive use; no input device exists today |
+| Driver framework | No driver registration model; character device interface is ad-hoc in devfs |
+| PCI enumeration | No PCI bus walk; blocks virtio-blk, NIC, and other PCI peripherals |
+
+### VM
+
+| Feature | Notes |
+|---------|-------|
+| Copy-on-write pages | Needed for efficient `fork`; mark PTEs read-only in both parent/child, copy on first write fault in `page_fault_handle` |
+| Guard pages on kernel stacks | Stack overflow silently corrupts adjacent memory; needs VMM support for intentionally unmapped pages |
+| Page reclaim | No eviction policy; physical memory is never reclaimed from user processes |
+
+### Observability gaps
+
+| Feature | Notes |
+|---------|-------|
+| `kprintf` re-entrancy / locking | Unsafe in interrupt context; framebuffer writes are not serialized |
+| Per-thread CPU time accounting | Tick hook exists; needs a `cpu_time_ns` counter in `thread_t` incremented on each preemption |
+
+### Long-term (not immediate)
+
+| Feature | Notes |
+|---------|-------|
+| SMP load balancing | Round-robin per-core queues exist; no work-stealing or push policy |
+| MLFQ / CFS scheduling | Round-robin is sufficient until multi-process workloads justify it |
 | Networking | Not designed |
-| IPC (pipes, sockets) | Not designed; pipes will follow VFS |
+| Shared memory (`mmap` file-backed / `MAP_SHARED`) | Anonymous `MAP_ANONYMOUS` works; file-backed and shared mappings not implemented |

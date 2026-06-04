@@ -79,9 +79,9 @@ Subsystems are layered. Higher layers may depend on lower layers; lower layers m
         |
 [ Scheduler / Process model / Syscall ABI / ELF loader ]
         |
-[ VFS / Drivers ]                      <- in progress
+[ VFS / Drivers ]                      <- VFS stable; pipes done; disk driver not started
         |
-[ Userspace ]                          <- ELF init process running; VFS + devfs live
+[ Userspace ]                          <- static ELF init running; fork/exec not yet implemented
 ```
 
 ---
@@ -327,11 +327,11 @@ Milestones are listed in dependency order. Each milestone should produce a clean
 |---|-----------|--------|-----------------|
 | 1 | **Scheduler and kernel threading** | Done | Preemptive SMP scheduler, per-core run queues, kernel thread lifecycle, context switch |
 | 2 | **Process abstraction** | Done | Process struct, VMA-based address space, demand paging, mmap/munmap/mprotect, process lifecycle |
-| 3 | **Syscall ABI** | Done | SYSCALL/SYSRET dispatch, user/kernel boundary, argument validation, 28 syscalls (musl-compatible surface) |
-| 4 | **Virtual filesystem** | In progress (Stage 2 done) | VFS layer, fd table, `open`/`read`/`write`/`close`/`stat`/`ioctl`; tmpfs at `/`; devfs at `/dev` (`null`, `zero`, `tty`); stdin/stdout/stderr wired |
-| 5 | **Initial userspace** | Partial | ELF loader done, init process running; VFS + devfs live, no `exec` |
-| 6 | **Device and driver framework** | Not started | Driver registration model, character device interface, `/dev` integration |
-| 7 | **IPC and synchronization** | Not started | Pipes, signals, futex-like primitives, shared memory |
+| 3 | **Syscall ABI** | Done | SYSCALL/SYSRET dispatch, user/kernel boundary, argument validation, 42 Linux-ABI syscalls (read/write/open/close/stat/fstat/lseek/mmap/mprotect/munmap/brk/ioctl/dup/dup2/dup3/pipe/pipe2/getdents64/openat/newfstatat/mkdir/rmdir/rename/unlink/truncate/ftruncate/chdir/getcwd/clock_gettime/prlimit64/arch_prctl/...) |
+| 4 | **Virtual filesystem** | Stable | VFS layer, fd table, full path resolution, tmpfs at `/`, devfs at `/dev` (`null`, `zero`, `tty`); stdin/stdout/stderr wired; `stat`/`getdents64`/`dup`/`dup2`/`dup3`/`pipe`/`pipe2`/`mkdir`/`rmdir`/`rename`/`unlink`/`truncate`/`chdir`/`getcwd` all done; **remaining: disk driver + ext2** |
+| 5 | **Initial userspace** | Partial | Static ELF64 loader done; init process running; VFS live; **blocked on `fork`/`execve`/`wait4`/signal delivery** — no process spawning yet |
+| 6 | **Device and driver framework** | Not started | Driver registration model, character device interface, keyboard/storage drivers |
+| 7 | **IPC and synchronization** | Partial | Pipes done (anonymous byte streams, blocking I/O); **remaining: signals, futex WAIT/WAKE, shared memory, sockets** |
 | 8 | **Networking** | Not started | Network stack, socket interface, TCP/IP |
 | 9 | **Advanced VM** | Not started | Copy-on-write, page reclaim, huge pages |
 | 10 | **POSIX userspace** | Not started | Port of a shell, coreutils, eventually GNU toolchain |
@@ -357,10 +357,11 @@ Milestones are listed in dependency order. Each milestone should produce a clean
 | Test framework (ktest) | Stable | 186 tests across 10 subsystems, CI-ready QEMU exit code |
 | Scheduler | Stable | Round-robin SMP, thread_block, idle threads, reaper |
 | Process model | Stable | VMA management, demand paging, mmap/munmap/mprotect |
-| Syscall ABI | Stable | SYSCALL/SYSRET, 28 syscalls (read, write, mmap, brk, fstat, writev, futex, rt_sigaction, uid/gid, ...) |
-| ELF loader | Stable | Static ELF64, init user process spawned at boot |
-| VFS | In progress | Stage 2 done: inode/file/fd abstraction, tmpfs, devfs (null/zero/tty), syscalls wired |
-| Drivers | Not started | - |
+| Syscall ABI | Stable | SYSCALL/SYSRET, 42 Linux-ABI syscalls; complete VFS surface (open/read/write/stat/getdents/dup/pipe/mkdir/chdir/...); clock_gettime, prlimit64, arch_prctl; **missing: fork/execve/wait4/signals/futex WAIT+WAKE** |
+| ELF loader | Stable | Static ELF64, init user process spawned at boot; no PT_INTERP / dynamic linking yet |
+| VFS | Stable | Inode/file/fd abstraction; tmpfs (full read/write, dirs, rename, truncate); devfs (null/zero/tty); anonymous pipes; per-process cwd; **remaining: disk driver + ext2** |
+| Pipes | Stable | Anonymous byte streams; 4 KiB ring buffer; blocking read/write; pipe/pipe2 syscalls wired |
+| Drivers | Not started | No keyboard, no storage, no PCI enumeration |
 
 ---
 
